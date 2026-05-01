@@ -1,0 +1,273 @@
+'use client';
+
+import { useCallback, useMemo, useState } from 'react';
+import { createPublicClient, decodeEventLog, http, isAddress, zeroAddress } from 'viem';
+import type { Address, Hash, TransactionReceipt } from 'viem';
+import { arbitrumSepolia } from 'viem/chains';
+import {
+  useSortsAccount,
+  useSortsChainId,
+  useSortsSwitchChain,
+  useSortsWriteContract,
+} from '@/components/providers/PrivyProvider';
+import { factoryAbi } from './abis/factoryAbi';
+import { membershipAbi } from './abis/membershipAbi';
+import type {
+  AggregateStats,
+  ChainReadinessState,
+  ChainState,
+  ChainTransactionState,
+  CreateCommunityInput,
+  CreateCommunityResult,
+  RenewInput,
+  SubscribeInput,
+  TransactionResult,
+} from './types';
+
+export const ARBITRUM_SEPOLIA_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? arbitrumSepolia.id);
+export const ARBITRUM_SEPOLIA_RPC_URL = process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL;
+export const SORTS_FACTORY_ADDRESS = process.env.NEXT_PUBLIC_SORTS_FACTORY_ADDRESS;
+export const ARBITRUM_SEPOLIA_ETH_LABEL = 'Arbitrum Sepolia ETH';
+
+const EXPLORER_BASE_URL = 'https://sepolia.arbiscan.io';
+
+const publicClient = createPublicClient({
+  chain: arbitrumSepolia,
+  transport: http(ARBITRUM_SEPOLIA_RPC_URL || undefined),
+});
+
+export function isFactoryConfigured(address = SORTS_FACTORY_ADDRESS): address is Address {
+  return Boolean(address && isAddress(address) && address !== zeroAddress);
+}
+
+export function shortenAddress(address?: string | null, chars = 4): string {
+  if (!address) return '';
+  if (address.length <= chars * 2 + 2) return address;
+  return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`;
+}
+
+export function formatTxHash(hash?: string | null, chars = 6): string {
+  if (!hash) return '';
+  if (hash.length <= chars * 2 + 2) return hash;
+  return `${hash.slice(0, chars + 2)}...${hash.slice(-chars)}`;
+}
+
+export function getExplorerTxUrl(txHash: string): string {
+  return `${EXPLORER_BASE_URL}/tx/${txHash}`;
+}
+
+export function getExplorerAddressUrl(address: string): string {
+  return `${EXPLORER_BASE_URL}/address/${address}`;
+}
+
+export function useChain() {
+  const { address } = useSortsAccount();
+  const chainId = useSortsChainId();
+  const { switchChain } = useSortsSwitchChain();
+  const { writeContractAsync } = useSortsWriteContract();
+  const [transactionState, setTransactionState] = useState<ChainTransactionState>('idle');
+  const [txHash, setTxHash] = useState<Hash | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const factoryConfigured = isFactoryConfigured();
+  const wrongNetwork = Boolean(address && chainId !== ARBITRUM_SEPOLIA_CHAIN_ID);
+
+  const readinessState = useMemo<ChainReadinessState>(() => {
+    if (!address) return 'wallet-not-connected';
+    if (wrongNetwork) return 'wrong-network';
+    if (!factoryConfigured) return 'factory-not-configured';
+    return 'ready';
+  }, [address, factoryConfigured, wrongNetwork]);
+
+  const chainState = useMemo<ChainState>(() => {
+    if (transactionState !== 'idle') return transactionState;
+    return readinessState;
+  }, [readinessState, transactionState]);
+
+  const resetTransaction = useCallback(() => {
+    setTransactionState('idle');
+    setTxHash(null);
+    setError(null);
+  }, []);
+
+  const switchToArbitrumSepolia = useCallback(() => {
+    switchChain({ chainId: ARBITRUM_SEPOLIA_CHAIN_ID });
+  }, [switchChain]);
+
+  const assertReadyForFactoryWrite = useCallback(() => {
+    if (!address) throw new Error('Connect a wallet first.');
+    if (wrongNetwork) throw new Error('Switch to Arbitrum Sepolia before sending a transaction.');
+    if (!isFactoryConfigured()) throw new Error('Set NEXT_PUBLIC_SORTS_FACTORY_ADDRESS after deploying SortsFactory.');
+    return SORTS_FACTORY_ADDRESS as Address;
+  }, [address, wrongNetwork]);
+
+  const assertReadyForMembershipWrite = useCallback((communityAddress: Address) => {
+    if (!address) throw new Error('Connect a wallet first.');
+    if (wrongNetwork) throw new Error('Switch to Arbitrum Sepolia before sending a transaction.');
+    if (!isAddress(communityAddress)) throw new Error('Community contract address is invalid.');
+  }, [address, wrongNetwork]);
+
+  const waitForReceipt = useCallback(async (hash: Hash): Promise<TransactionReceipt> => {
+    setTransactionState('transaction-pending');
+    return publicClient.waitForTransactionReceipt({ hash });
+  }, []);
+
+  const createCommunity = useCallback(async (input: CreateCommunityInput): Promise<CreateCommunityResult> => {
+    setError(null);
+
+    try {
+      const factoryAddress = assertReadyForFactoryWrite();
+      setTransactionState('awaiting-signature');
+
+      const hash = await writeContractAsync({
+        address: factoryAddress,
+        abi: factoryAbi,
+        functionName: 'createCommunity',
+        args: [
+          input.name,
+          input.symbol,
+          input.tiers.map((tier) => tier.level),
+          input.tiers.map((tier) => tier.priceWei),
+          input.tiers.map((tier) => tier.durationSeconds),
+        ],
+      });
+
+      setTxHash(hash);
+      const receipt = await waitForReceipt(hash);
+      const created = parseCommunityCreatedEvent(receipt, factoryAddress);
+
+      setTransactionState('transaction-confirmed');
+      return {
+        txHash: hash,
+        receipt,
+        communityId: created.communityId,
+        contractAddress: created.contractAddress,
+      };
+    } catch (caught) {
+      const message = getErrorMessage(caught);
+      setError(message);
+      setTransactionState('transaction-failed');
+      throw caught;
+    }
+  }, [assertReadyForFactoryWrite, waitForReceipt, writeContractAsync]);
+
+  const subscribe = useCallback(async (input: SubscribeInput): Promise<TransactionResult> => {
+    setError(null);
+
+    try {
+      assertReadyForMembershipWrite(input.communityAddress);
+      setTransactionState('awaiting-signature');
+
+      const hash = await writeContractAsync({
+        address: input.communityAddress,
+        abi: membershipAbi,
+        functionName: 'subscribe',
+        args: [input.tier],
+        value: input.paymentWei,
+      });
+
+      setTxHash(hash);
+      const receipt = await waitForReceipt(hash);
+      setTransactionState('transaction-confirmed');
+      return { txHash: hash, receipt };
+    } catch (caught) {
+      const message = getErrorMessage(caught);
+      setError(message);
+      setTransactionState('transaction-failed');
+      throw caught;
+    }
+  }, [assertReadyForMembershipWrite, waitForReceipt, writeContractAsync]);
+
+  const renew = useCallback(async (input: RenewInput): Promise<TransactionResult> => {
+    setError(null);
+
+    try {
+      assertReadyForMembershipWrite(input.communityAddress);
+      setTransactionState('awaiting-signature');
+
+      const hash = await writeContractAsync({
+        address: input.communityAddress,
+        abi: membershipAbi,
+        functionName: 'renewSubscription',
+        value: input.paymentWei,
+      });
+
+      setTxHash(hash);
+      const receipt = await waitForReceipt(hash);
+      setTransactionState('transaction-confirmed');
+      return { txHash: hash, receipt };
+    } catch (caught) {
+      const message = getErrorMessage(caught);
+      setError(message);
+      setTransactionState('transaction-failed');
+      throw caught;
+    }
+  }, [assertReadyForMembershipWrite, waitForReceipt, writeContractAsync]);
+
+  const getAggregateStats = useCallback(async (communityAddress: Address): Promise<AggregateStats> => {
+    if (!isAddress(communityAddress)) {
+      throw new Error('Community contract address is invalid.');
+    }
+
+    const [totalMembers, totalRevenueWei, activeMemberships] = await publicClient.readContract({
+      address: communityAddress,
+      abi: membershipAbi,
+      functionName: 'getAggregateStats',
+    });
+
+    return { totalMembers, totalRevenueWei, activeMemberships };
+  }, []);
+
+  return {
+    address,
+    chainId,
+    chainState,
+    readinessState,
+    transactionState,
+    txHash,
+    error,
+    factoryAddress: factoryConfigured ? (SORTS_FACTORY_ADDRESS as Address) : null,
+    factoryConfigured,
+    wrongNetwork,
+    paymentTokenLabel: ARBITRUM_SEPOLIA_ETH_LABEL,
+    createCommunity,
+    subscribe,
+    renew,
+    getAggregateStats,
+    resetTransaction,
+    switchToArbitrumSepolia,
+  };
+}
+
+function parseCommunityCreatedEvent(receipt: TransactionReceipt, factoryAddress: Address) {
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== factoryAddress.toLowerCase()) continue;
+
+    try {
+      const decoded = decodeEventLog({
+        abi: factoryAbi,
+        data: log.data,
+        topics: log.topics,
+      });
+
+      if (decoded.eventName === 'CommunityCreated') {
+        return {
+          communityId: decoded.args.communityId,
+          contractAddress: decoded.args.contractAddress,
+        };
+      }
+    } catch {
+      // Ignore unrelated logs from the same transaction.
+    }
+  }
+
+  return {
+    communityId: null,
+    contractAddress: null,
+  };
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return 'Transaction failed.';
+}

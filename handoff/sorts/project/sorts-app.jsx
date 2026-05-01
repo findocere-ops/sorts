@@ -1,0 +1,1843 @@
+/* ============================================================
+   SORTS — Confidential Community Protocol
+   Single-file React prototype, build-ready for Next.js conversion.
+
+   ROUTE MAP (mirrored as `page` state):
+   PUBLIC:
+     /                    → LandingPage
+     /role                → RoleGateway
+     /auth                → AuthConnect
+     /join/:communityId   → JoinPage
+
+   CREATOR (CreatorStudioLayout):
+     /studio              → CreatorOverview
+     /studio/communities  → CreatorCommunities
+     /studio/create       → CreateCommunityWizard
+     /studio/content      → CreatorContentManager
+     /studio/classroom    → CreatorClassroomBuilder
+     /studio/calendar     → CreatorCalendarManager
+     /studio/tiers        → CreatorTierAccess
+     /studio/invites      → CreatorInvites
+     /studio/analytics    → CreatorAnalytics
+     /studio/telegram     → CreatorTelegramBot
+     /studio/privacy-proof→ CreatorPrivacyProof
+     /studio/settings     → CreatorSettings
+
+   SUBSCRIBER (SubscriberAppLayout):
+     /app/:cid/feed       → SubscriberFeed
+     /app/:cid/classroom  → SubscriberClassroom
+     /app/:cid/library    → SubscriberLibrary
+     /app/:cid/calendar   → SubscriberCalendar
+     /app/:cid/leaderboard→ SubscriberLeaderboard
+     /app/:cid/membership → SubscriberMembership
+     /app/:cid/telegram   → SubscriberTelegram
+     /app/:cid/privacy    → SubscriberPrivacyCenter
+     /account             → AccountWallet
+   ============================================================ */
+
+const { useState, useEffect, useMemo, createContext, useContext } = React;
+
+// ================================================================
+// MOCK DATA
+// ================================================================
+const MOCK_COMMUNITIES = [
+  { id: 'alpha-signals', name: 'Alpha Signals', symbol: 'ASIG', chain: 'arbitrum', status: 'live', members: 1247, mrr: 18420, contentCount: 142, color: 'var(--cyan)' },
+  { id: 'defi-research', name: 'DeFi Research Lab', symbol: 'DRL', chain: 'arbitrum', status: 'live', members: 384, mrr: 9620, contentCount: 67, color: 'var(--orange)' },
+  { id: 'onchain-fund', name: 'Onchain Fund Notes', symbol: 'OFN', chain: 'arbitrum', status: 'draft', members: 0, mrr: 0, contentCount: 4, color: 'var(--gold)' },
+];
+
+const MOCK_TIERS = [
+  { id: 'basic', name: 'Basic', price: 19, duration: 30, benefits: ['Public posts', 'Community feed', 'Telegram channel'] },
+  { id: 'pro', name: 'Pro', price: 49, duration: 30, benefits: ['Everything in Basic', 'Alpha calls', 'Weekly research', 'Course access'], featured: true },
+  { id: 'vip', name: 'VIP', price: 199, duration: 30, benefits: ['Everything in Pro', 'Private group chat', '1:1 calls', 'Early access drops'] },
+];
+
+const MOCK_POSTS = [
+  { id: 1, title: 'Q2 Alpha Thesis: Liquid Restaking Tokens', tier: 'pro', author: 'Alpha Signals', time: '2h ago', preview: 'Three structural shifts that make LRTs the highest-conviction trade for the next 90 days.', type: 'alpha' },
+  { id: 2, title: 'Research Note: New L2 Settlement Models', tier: 'pro', author: 'Alpha Signals', time: '8h ago', preview: 'Comparative analysis of stage-2 rollup architectures and their MEV implications.', type: 'research' },
+  { id: 3, title: 'Welcome thread — week 14', tier: 'basic', author: 'Alpha Signals', time: '1d ago', preview: 'New members, drop your areas of focus. Pinned resources updated.', type: 'announcement' },
+  { id: 4, title: 'VIP Call recording: Macro framework', tier: 'vip', author: 'Alpha Signals', time: '2d ago', preview: 'Recorded session covering the rates regime and crypto correlation.', type: 'alpha', locked: true },
+];
+
+const MOCK_EVENTS = [
+  { id: 1, title: 'Weekly Alpha Call', date: 'May 3', time: '20:00 UTC', tier: 'pro', rsvps: 84 },
+  { id: 2, title: 'Office Hours: Q&A', date: 'May 5', time: '17:00 UTC', tier: 'basic', rsvps: 142 },
+  { id: 3, title: 'VIP Roundtable: Macro', date: 'May 8', time: '22:00 UTC', tier: 'vip', rsvps: 12 },
+];
+
+const MOCK_COURSES = [
+  { id: 1, title: 'Onchain Research Methods', lessons: 12, progress: 0.45, tier: 'basic' },
+  { id: 2, title: 'DeFi Risk Frameworks', lessons: 8, progress: 0.8, tier: 'pro' },
+  { id: 3, title: 'MEV & Block Building', lessons: 6, progress: 0, tier: 'pro' },
+];
+
+const MOCK_LEADERBOARD = [
+  { rank: 1, name: 'cryptotitan', points: 4820, level: 'Architect' },
+  { rank: 2, name: 'pseudoanon.eth', points: 3940, level: 'Architect' },
+  { rank: 3, name: 'frenof_vitalik', points: 3210, level: 'Builder' },
+  { rank: 4, name: 'quietalpha', points: 2870, level: 'Builder' },
+  { rank: 5, name: 'You', points: 1840, level: 'Researcher', you: true },
+];
+
+// ================================================================
+// ICON SET (inline SVG)
+// ================================================================
+const Icon = ({ name, size = 16, color = 'currentColor' }) => {
+  const stroke = { stroke: color, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' };
+  const paths = {
+    grid: <><rect x="3" y="3" width="7" height="7" rx="1" {...stroke} /><rect x="14" y="3" width="7" height="7" rx="1" {...stroke} /><rect x="3" y="14" width="7" height="7" rx="1" {...stroke} /><rect x="14" y="14" width="7" height="7" rx="1" {...stroke} /></>,
+    home: <path d="M3 12L12 3l9 9M5 10v10h14V10" {...stroke} />,
+    plus: <><path d="M12 5v14M5 12h14" {...stroke} /></>,
+    file: <><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" {...stroke} /><path d="M14 3v6h6" {...stroke} /></>,
+    book: <><path d="M4 19.5A2.5 2.5 0 016.5 17H20V3H6.5A2.5 2.5 0 004 5.5v14z" {...stroke} /><path d="M4 19.5V21h16" {...stroke} /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" {...stroke} /><path d="M3 9h18M8 3v4M16 3v4" {...stroke} /></>,
+    layers: <><path d="M12 3l9 5-9 5-9-5 9-5z" {...stroke} /><path d="M3 13l9 5 9-5M3 18l9 5 9-5" {...stroke} /></>,
+    invite: <><path d="M3 7l9 6 9-6M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" {...stroke} /></>,
+    chart: <><path d="M3 21V3M3 21h18M7 14l4-4 3 3 5-6" {...stroke} /></>,
+    bot: <><rect x="4" y="8" width="16" height="12" rx="2" {...stroke} /><path d="M9 14h.01M15 14h.01M12 4v4M8 8h8" {...stroke} /></>,
+    shield: <path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z" {...stroke} />,
+    settings: <><circle cx="12" cy="12" r="3" {...stroke} /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.7 1.7 0 008 19.4a1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H2a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H8a1.7 1.7 0 001-1.5V2a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V8a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" {...stroke} /></>,
+    feed: <><path d="M4 11a8 8 0 018 8M4 4a16 16 0 0116 16M5 18a1 1 0 100 2 1 1 0 000-2z" {...stroke} /></>,
+    library: <><path d="M3 5a2 2 0 012-2h2v18H5a2 2 0 01-2-2V5zM10 3h4v18h-4zM17 3l4 1-3 17-4-1z" {...stroke} /></>,
+    trophy: <><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4zM3 7a3 3 0 003 3M21 7a3 3 0 01-3 3" {...stroke} /></>,
+    crown: <><path d="M2 7l5 4 5-7 5 7 5-4-2 11H4z" {...stroke} /></>,
+    user: <><circle cx="12" cy="8" r="4" {...stroke} /><path d="M4 21a8 8 0 0116 0" {...stroke} /></>,
+    bell: <><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9zM10 21a2 2 0 004 0" {...stroke} /></>,
+    search: <><circle cx="11" cy="11" r="7" {...stroke} /><path d="M21 21l-4.35-4.35" {...stroke} /></>,
+    lock: <><rect x="4" y="11" width="16" height="11" rx="2" {...stroke} /><path d="M8 11V7a4 4 0 018 0v4" {...stroke} /></>,
+    eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" {...stroke} /><circle cx="12" cy="12" r="3" {...stroke} /></>,
+    eye_off: <><path d="M9.9 4.24A9.12 9.12 0 0112 4c6 0 10 7 10 7a17.5 17.5 0 01-3.36 4.06M6.61 6.61A17.5 17.5 0 002 11s4 7 10 7a9.12 9.12 0 005.39-1.61M14.12 14.12A3 3 0 119.88 9.88M1 1l22 22" {...stroke} /></>,
+    check: <path d="M5 12l5 5L20 7" {...stroke} />,
+    chevron_right: <path d="M9 6l6 6-6 6" {...stroke} />,
+    chevron_down: <path d="M6 9l6 6 6-6" {...stroke} />,
+    arrow_right: <path d="M5 12h14M13 5l7 7-7 7" {...stroke} />,
+    copy: <><rect x="9" y="9" width="13" height="13" rx="2" {...stroke} /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" {...stroke} /></>,
+    qr: <><rect x="3" y="3" width="7" height="7" rx="1" {...stroke} /><rect x="14" y="3" width="7" height="7" rx="1" {...stroke} /><rect x="3" y="14" width="7" height="7" rx="1" {...stroke} /><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v1" {...stroke} /></>,
+    wallet: <><rect x="2" y="6" width="20" height="14" rx="2" {...stroke} /><path d="M22 12h-4a2 2 0 100 4h4" {...stroke} /></>,
+    play: <path d="M6 4l14 8-14 8z" stroke={color} strokeWidth="1.6" strokeLinejoin="round" fill="none" />,
+    upload: <><path d="M12 3v14M5 10l7-7 7 7M3 21h18" {...stroke} /></>,
+    download: <><path d="M12 21V7M5 14l7 7 7-7M3 3h18" {...stroke} /></>,
+    bolt: <path d="M13 2L3 14h7l-2 8 10-12h-7l2-8z" {...stroke} />,
+    gift: <><rect x="3" y="8" width="18" height="13" rx="1" {...stroke} /><path d="M3 12h18M12 8v13M7 8a3 3 0 010-6 4 4 0 015 4 4 4 0 015-4 3 3 0 010 6" {...stroke} /></>,
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" style={{display: 'block', flexShrink: 0}}>{paths[name] || null}</svg>;
+};
+
+// ================================================================
+// LOGO COMPONENTS — uses official PNG asset
+// ================================================================
+const SortsLogoMark = ({ size = 32 }) => (
+  <div className="logo-mark" style={{ width: size, height: size }} aria-label="SORTS" />
+);
+
+const SortsLogoFull = ({ markSize = 30, wordmarkSize = 16, showTagline = false }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <SortsLogoMark size={markSize} />
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <span className="wordmark" style={{ fontSize: wordmarkSize }}>SORTS</span>
+      {showTagline && <span className="tagline">Confidential Community Protocol</span>}
+    </div>
+  </div>
+);
+
+// ================================================================
+// SHARED UI PRIMITIVES
+// ================================================================
+const PrivacyBadge = ({ label = 'Privacy enforced', size = 'sm' }) => (
+  <span className="privacy-badge"><Icon name="shield" size={12} />{label}</span>
+);
+
+const ChainBadge = ({ chain = 'arbitrum' }) => (
+  <span className={`chain-badge ${chain === 'solana' ? 'solana' : ''}`}>
+    <span className="chain-badge dot"></span>
+    {chain === 'arbitrum' ? 'Arbitrum Sepolia' : chain === 'solana' ? 'Solana Devnet' : chain}
+  </span>
+);
+
+const Stat = ({ value, label, delta, color }) => (
+  <div className="stat-card">
+    <div className="stat-val" style={{ color: color || 'var(--text-1)' }}>{value}</div>
+    <div className="stat-lbl">{label}</div>
+    {delta && <div className="stat-delta text-success">{delta}</div>}
+  </div>
+);
+
+const Empty = ({ icon = 'grid', title, sub, action }) => (
+  <div className="empty-state">
+    <div className="empty-icon"><Icon name={icon} size={22} /></div>
+    <div className="t-h3 mb-2" style={{ color: 'var(--text-1)' }}>{title}</div>
+    <div className="t-sm" style={{ marginBottom: action ? 18 : 0 }}>{sub}</div>
+    {action}
+  </div>
+);
+
+const Toast = ({ message, type = 'success', onClose }) => {
+  useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, [onClose]);
+  const colors = { success: 'var(--success)', error: 'var(--danger)', info: 'var(--cyan)' };
+  return (
+    <div className="toast">
+      <div style={{ width: 8, height: 8, borderRadius: '50%', background: colors[type] }} />
+      <span>{message}</span>
+    </div>
+  );
+};
+
+// ================================================================
+// LAYOUTS
+// ================================================================
+const PublicLayout = ({ navigate, children }) => (
+  <div className="lp">
+    <nav className="lp-nav">
+      <div onClick={() => navigate('landing')} style={{ cursor: 'pointer' }}>
+        <SortsLogoFull markSize={32} wordmarkSize={17} showTagline={false} />
+      </div>
+      <div className="lp-nav-links">
+        <span className="lp-nav-link" onClick={() => navigate('landing', { hash: 'features' })}>Features</span>
+        <span className="lp-nav-link" onClick={() => navigate('landing', { hash: 'privacy' })}>Privacy</span>
+        <span className="lp-nav-link" onClick={() => navigate('landing', { hash: 'pricing' })}>Pricing</span>
+        <span className="lp-nav-link" onClick={() => navigate('role')}>Demo</span>
+      </div>
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('auth')}>Sign in</button>
+        <button className="btn btn-primary btn-sm" onClick={() => navigate('role')}>Launch app</button>
+      </div>
+    </nav>
+    {children}
+  </div>
+);
+
+const CREATOR_NAV = [
+  { id: 'studio', label: 'Overview', icon: 'home' },
+  { id: 'studio_communities', label: 'Communities', icon: 'grid' },
+  { id: 'studio_create', label: 'Create Community', icon: 'plus' },
+  { _section: 'Build' },
+  { id: 'studio_content', label: 'Content', icon: 'file' },
+  { id: 'studio_classroom', label: 'Classroom', icon: 'book' },
+  { id: 'studio_calendar', label: 'Calendar', icon: 'calendar' },
+  { _section: 'Monetize' },
+  { id: 'studio_tiers', label: 'Tiers & Access', icon: 'layers' },
+  { id: 'studio_invites', label: 'Invites', icon: 'invite' },
+  { id: 'studio_analytics', label: 'Analytics', icon: 'chart' },
+  { _section: 'Protocol' },
+  { id: 'studio_telegram', label: 'Telegram Bot', icon: 'bot' },
+  { id: 'studio_privacy', label: 'Privacy Proof', icon: 'shield' },
+  { id: 'studio_settings', label: 'Settings', icon: 'settings' },
+];
+
+const SUBSCRIBER_NAV = [
+  { id: 'app_feed', label: 'Feed', icon: 'feed' },
+  { id: 'app_classroom', label: 'Classroom', icon: 'book' },
+  { id: 'app_library', label: 'Library', icon: 'library' },
+  { id: 'app_calendar', label: 'Calendar', icon: 'calendar' },
+  { id: 'app_leaderboard', label: 'Leaderboard', icon: 'trophy' },
+  { _section: 'Access' },
+  { id: 'app_membership', label: 'Membership', icon: 'crown' },
+  { id: 'app_telegram', label: 'Telegram', icon: 'bot' },
+  { id: 'app_privacy', label: 'Privacy', icon: 'shield' },
+  { id: 'account', label: 'Account', icon: 'user' },
+];
+
+const Sidebar = ({ navItems, page, navigate, mode }) => (
+  <aside className={`sidebar ${mode}`}>
+    <div className="sb-logo">
+      <SortsLogoFull markSize={26} wordmarkSize={14} />
+    </div>
+    <div className={`sb-mode-pill ${mode}`}>
+      <Icon name={mode === 'creator' ? 'crown' : 'user'} size={11} />
+      {mode === 'creator' ? 'Creator Studio' : 'Member App'}
+    </div>
+    <nav className="sb-nav">
+      {navItems.map((item, i) => item._section ? (
+        <div key={i} className="nav-section-label">{item._section}</div>
+      ) : (
+        <button key={item.id}
+          className={`nav-item ${page === item.id ? 'active' : ''} ${mode === 'creator' && page === item.id ? 'creator-active' : ''}`}
+          onClick={() => navigate(item.id)}>
+          <Icon name={item.icon} size={16} />
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </nav>
+    <div className="sb-footer">
+      <button className="nav-item" onClick={() => navigate('role')}>
+        <Icon name="arrow_right" size={16} />
+        <span>Switch role</span>
+      </button>
+    </div>
+  </aside>
+);
+
+const TopBar = ({ crumbs, walletConnected, onConnectWallet, onWalletClick }) => (
+  <header className="topbar">
+    <div className="topbar-crumbs">
+      {crumbs.map((c, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <span className="sep"><Icon name="chevron_right" size={12} /></span>}
+          {i === crumbs.length - 1 ? <strong>{c}</strong> : <span>{c}</span>}
+        </React.Fragment>
+      ))}
+    </div>
+    <div className="tb-search" style={{ marginLeft: 24 }}>
+      <span className="tb-search-ic"><Icon name="search" size={14} /></span>
+      <input placeholder="Search…" />
+    </div>
+    <div className="tb-actions">
+      <button className="ic-btn"><Icon name="bell" size={16} /></button>
+      <button className={`wallet-btn ${walletConnected ? 'connected' : 'disconnected'}`} onClick={walletConnected ? onWalletClick : onConnectWallet}>
+        <span className="wallet-dot"></span>
+        {walletConnected ? '0xa1f…b3c2' : 'Connect'}
+      </button>
+    </div>
+  </header>
+);
+
+const MobileBottomNav = ({ items, page, navigate }) => (
+  <div className="mobile-bottom-nav">
+    {items.filter(i => !i._section).slice(0, 5).map(item => (
+      <button key={item.id} className={`mb-nav-item ${page === item.id ? 'active' : ''}`} onClick={() => navigate(item.id)}>
+        <Icon name={item.icon} size={18} />
+        <span>{item.label}</span>
+      </button>
+    ))}
+  </div>
+);
+
+const CreatorStudioLayout = ({ page, navigate, walletConnected, onConnectWallet, crumbs, children, rightRail }) => (
+  <div className="app-shell">
+    <Sidebar navItems={CREATOR_NAV} page={page} navigate={navigate} mode="creator" />
+    <div className="main-area">
+      <TopBar crumbs={crumbs} walletConnected={walletConnected} onConnectWallet={onConnectWallet} />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div className="page-content">{children}</div>
+        {rightRail && <aside className="right-rail">{rightRail}</aside>}
+      </div>
+    </div>
+    <MobileBottomNav items={CREATOR_NAV} page={page} navigate={navigate} />
+  </div>
+);
+
+const SubscriberAppLayout = ({ page, navigate, walletConnected, onConnectWallet, crumbs, children, rightRail }) => (
+  <div className="app-shell">
+    <Sidebar navItems={SUBSCRIBER_NAV} page={page} navigate={navigate} mode="subscriber" />
+    <div className="main-area">
+      <TopBar crumbs={crumbs} walletConnected={walletConnected} onConnectWallet={onConnectWallet} />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div className="page-content">{children}</div>
+        {rightRail && <aside className="right-rail">{rightRail}</aside>}
+      </div>
+    </div>
+    <MobileBottomNav items={SUBSCRIBER_NAV} page={page} navigate={navigate} />
+  </div>
+);
+
+// ================================================================
+// PUBLIC: LandingPage
+// ================================================================
+const LandingPage = ({ navigate }) => (
+  <>
+    {/* Hero */}
+    <section className="lp-section" style={{ paddingTop: 120, paddingBottom: 96, position: 'relative' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 800px 400px at 50% 30%, rgba(45,232,224,0.08), transparent 70%)', pointerEvents: 'none' }}></div>
+      <div style={{ position: 'relative', textAlign: 'center', maxWidth: 880, margin: '0 auto' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '6px 14px', borderRadius: 999, background: 'var(--cyan-dim)', border: '1px solid var(--border-cyan)', fontSize: 12, fontWeight: 500, color: 'var(--cyan)', marginBottom: 28 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></span>
+          v1.0 Live on Arbitrum Sepolia
+        </div>
+        <h1 className="hero-headline mb-5">
+          Confidential communities,<br />
+          built for the <span className="hero-grad-text">onchain era</span>.
+        </h1>
+        <p className="t-body" style={{ fontSize: 17, color: 'var(--text-2)', maxWidth: 600, margin: '0 auto 36px', lineHeight: 1.65 }}>
+          Memberships, tier access, and gated content secured by cryptographic infrastructure.
+          No public subscriber list. No leaked membership graph. Privacy is the architecture.
+        </p>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-xl btn-primary" onClick={() => navigate('role', { role: 'creator' })}>
+            <Icon name="plus" size={16} /> Create a community
+          </button>
+          <button className="btn btn-xl btn-secondary" onClick={() => navigate('role', { role: 'subscriber' })}>
+            <Icon name="invite" size={16} /> Join a community
+          </button>
+          <button className="btn btn-xl btn-outline" onClick={() => navigate('app_feed', { cid: 'alpha-signals' })}>
+            View protocol demo
+          </button>
+        </div>
+        <div style={{ marginTop: 36, display: 'flex', gap: 24, justifyContent: 'center', flexWrap: 'wrap', fontSize: 12, color: 'var(--text-3)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={14} color="var(--success)" /> ERC-7984 confidential tokens</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={14} color="var(--success)" /> iExec NOX TEE</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={14} color="var(--success)" /> Privy embedded wallets</span>
+        </div>
+      </div>
+    </section>
+
+    {/* Problem */}
+    <section className="lp-section" id="features">
+      <div className="section-eyebrow">The problem</div>
+      <h2 className="section-title">Community platforms leak the one thing that matters most.</h2>
+      <p className="section-sub mb-8">Skool, Discord, Telegram — every platform exposes who's a member, what tier they pay for, and what private content they access. For alpha groups, research DAOs, and institutions, that's a critical leak.</p>
+      <div className="g3 mt-6">
+        {[
+          { t: 'Membership graphs are public', s: 'Anyone can scrape who joined what. Competitors map your member base.' },
+          { t: 'Tier ownership is observable', s: 'Onchain platforms expose tier NFTs, leaking who paid premium prices.' },
+          { t: 'Content reuses leak access', s: 'Pirated downloads have no enforcement; access lasts forever.' },
+        ].map((x, i) => (
+          <div key={i} className="card">
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--danger-dim)', border: '1px solid rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <Icon name="eye" size={18} color="var(--danger)" />
+            </div>
+            <div className="t-h3 mb-2">{x.t}</div>
+            <div className="t-sm text-muted">{x.s}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    {/* Solution */}
+    <section className="lp-section" id="privacy">
+      <div className="section-eyebrow">The protocol</div>
+      <h2 className="section-title">Privacy is enforced at the protocol layer, not as a UI toggle.</h2>
+      <p className="section-sub mb-8">SORTS combines confidential tokens, TEE-backed compute, and aggregate-only analytics so creator-blindness is mathematically guaranteed.</p>
+      <div className="g3 mt-6">
+        {[
+          { ic: 'shield', t: 'Encrypted memberships', s: 'Membership tokens are confidential by default. No enumerate-members function exists.' },
+          { ic: 'lock', t: 'Tier ownership hidden', s: 'Even the creator cannot see which subscriber paid for which tier.' },
+          { ic: 'eye_off', t: 'No subscriber list', s: 'Aggregate counts only. The member graph is not stored anywhere queryable.' },
+          { ic: 'bolt', t: 'Anti-piracy access', s: 'Content access tokens expire and re-verify on every fetch.' },
+          { ic: 'book', t: 'Classrooms & courses', s: 'Multi-lesson modules with tier gating and completion tracking.' },
+          { ic: 'bot', t: 'Telegram protocol bridge', s: 'Verify membership in Telegram without exposing identity.' },
+        ].map((x, i) => (
+          <div key={i} className="card card-hover">
+            <div style={{ width: 38, height: 38, borderRadius: 8, background: 'var(--cyan-dim)', border: '1px solid var(--border-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <Icon name={x.ic} size={18} color="var(--cyan)" />
+            </div>
+            <div className="t-h3 mb-2">{x.t}</div>
+            <div className="t-sm text-muted">{x.s}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    {/* Role split */}
+    <section className="lp-section">
+      <div className="section-eyebrow">Two products. One protocol.</div>
+      <h2 className="section-title">Built for both sides of a community.</h2>
+      <div className="g2 mt-6">
+        <div className="card glow-orange" style={{ borderColor: 'var(--border-orange)', padding: 30 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'var(--orange-dim)', borderRadius: 999, border: '1px solid var(--border-orange)', fontSize: 11, fontWeight: 600, color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: 0.12, marginBottom: 18 }}>
+            <Icon name="crown" size={12} /> Creator Studio
+          </div>
+          <div className="t-h1 mb-3">Run a confidential community.</div>
+          <p className="t-body text-muted mb-5">Deploy tiers, gate content, monetize members, and track aggregate performance — without ever seeing individual subscriber data.</p>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {['Multi-tier monetization', 'Classroom & calendar builder', 'Aggregate-only analytics', 'Telegram bot integration', 'On-chain deploy in one flow'].map((s, i) => (
+              <li key={i} style={{ display: 'flex', gap: 10, fontSize: 13.5 }}>
+                <Icon name="check" size={16} color="var(--orange)" /> {s}
+              </li>
+            ))}
+          </ul>
+          <button className="btn btn-primary mt-6" onClick={() => navigate('role', { role: 'creator' })}>
+            Open Creator Studio <Icon name="arrow_right" size={14} />
+          </button>
+        </div>
+        <div className="card glow-cyan" style={{ borderColor: 'var(--border-cyan)', padding: 30 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'var(--cyan-dim)', borderRadius: 999, border: '1px solid var(--border-cyan)', fontSize: 11, fontWeight: 600, color: 'var(--cyan)', textTransform: 'uppercase', letterSpacing: 0.12, marginBottom: 18 }}>
+            <Icon name="user" size={12} /> Member App
+          </div>
+          <div className="t-h1 mb-3">Join without exposing yourself.</div>
+          <p className="t-body text-muted mb-5">Subscribe, consume gated content, take courses, attend events, earn points — all under encrypted membership.</p>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {['Gated feed, library, classroom', 'RSVP private events', 'Pseudonymous leaderboard', 'Telegram access bridge', 'No public membership trace'].map((s, i) => (
+              <li key={i} style={{ display: 'flex', gap: 10, fontSize: 13.5 }}>
+                <Icon name="check" size={16} color="var(--cyan)" /> {s}
+              </li>
+            ))}
+          </ul>
+          <button className="btn btn-cyan mt-6" onClick={() => navigate('role', { role: 'subscriber' })}>
+            Open Member App <Icon name="arrow_right" size={14} />
+          </button>
+        </div>
+      </div>
+    </section>
+
+    {/* Privacy architecture */}
+    <section className="lp-section">
+      <div className="section-eyebrow">Privacy architecture</div>
+      <h2 className="section-title">Cryptographic guarantees, not platform promises.</h2>
+      <div className="card mt-6" style={{ padding: 32 }}>
+        <div className="g3" style={{ gap: 28 }}>
+          {[
+            { t: 'Phase 1 — Live', items: ['Arbitrum Sepolia', 'ERC-7984 tokens', 'iExec NOX TEE', 'Privy + Telegram'] },
+            { t: 'Phase 2 — Adapter-ready', items: ['Solana Devnet', 'Umbra stealth', 'Encrypt FHE', 'IKA dWallet'] },
+            { t: 'Architecture', items: ['Chain-agnostic adapters', 'TEE-backed compute', 'Aggregate-only state', 'Zero member enumeration'] },
+          ].map((s, i) => (
+            <div key={i}>
+              <div className="t-label mb-3">{s.t}</div>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {s.items.map((it, j) => <li key={j} className="t-mono" style={{ fontSize: 12.5, color: 'var(--text-2)' }}>— {it}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    {/* Final CTA */}
+    <section className="lp-section" id="pricing" style={{ textAlign: 'center', paddingBottom: 120 }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '60px 32px', background: 'linear-gradient(145deg, rgba(45,232,224,0.06), rgba(255,138,0,0.04))', border: '1px solid var(--border-cyan)', borderRadius: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+          <SortsLogoMark size={64} />
+        </div>
+        <h2 className="section-title" style={{ marginBottom: 16, textAlign: 'center' }}>
+          Your community. Your members.<br /><span className="hero-grad-text">Nobody else's business.</span>
+        </h2>
+        <p className="t-body text-muted mb-6" style={{ fontSize: 15 }}>Free to deploy. 2% protocol fee on member payments. No platform lock-in.</p>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-xl btn-primary" onClick={() => navigate('role')}>Launch your community</button>
+          <button className="btn btn-xl btn-outline" onClick={() => navigate('auth')}>Sign in</button>
+        </div>
+      </div>
+    </section>
+
+    <footer style={{ borderTop: '1px solid var(--border-subtle)', padding: '32px 36px', textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+        <SortsLogoFull markSize={20} wordmarkSize={11} />
+      </div>
+      © 2026 SORTS Protocol — Confidential community infrastructure
+    </footer>
+  </>
+);
+
+// ================================================================
+// PUBLIC: RoleGateway
+// ================================================================
+const RoleGateway = ({ navigate }) => (
+  <div className="lp" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '40px 20px' }}>
+    <div style={{ maxWidth: 1000, width: '100%' }}>
+      <div style={{ textAlign: 'center', marginBottom: 56 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+          <SortsLogoMark size={56} />
+        </div>
+        <h1 className="t-display" style={{ fontSize: 44 }}>How will you use SORTS?</h1>
+        <p className="t-body text-muted mt-3" style={{ fontSize: 15 }}>Pick your role. You can switch anytime.</p>
+      </div>
+      <div className="g3" style={{ gap: 20 }}>
+        <div className="role-tile creator" onClick={() => navigate('studio')}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--orange-dim)', border: '1px solid var(--border-orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+            <Icon name="crown" size={24} color="var(--orange)" />
+          </div>
+          <div className="t-h2 mb-2">I'm a Creator</div>
+          <p className="t-sm text-muted mb-5">Build, monetize, and operate a confidential community.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--orange)', fontSize: 13.5, fontWeight: 500 }}>
+            Open Creator Studio <Icon name="arrow_right" size={14} />
+          </div>
+        </div>
+        <div className="role-tile subscriber" onClick={() => navigate('app_feed', { cid: 'alpha-signals' })}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--cyan-dim)', border: '1px solid var(--border-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+            <Icon name="user" size={24} color="var(--cyan)" />
+          </div>
+          <div className="t-h2 mb-2">I'm a Subscriber</div>
+          <p className="t-sm text-muted mb-5">Join, consume gated content, attend events, earn points.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--cyan)', fontSize: 13.5, fontWeight: 500 }}>
+            Open Member App <Icon name="arrow_right" size={14} />
+          </div>
+        </div>
+        <div className="role-tile demo" onClick={() => navigate('join', { cid: 'alpha-signals' })}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+            <Icon name="eye" size={24} color="var(--text-2)" />
+          </div>
+          <div className="t-h2 mb-2">Explore demo</div>
+          <p className="t-sm text-muted mb-5">Walk through a community as a guest. No wallet needed.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-2)', fontSize: 13.5, fontWeight: 500 }}>
+            View demo community <Icon name="arrow_right" size={14} />
+          </div>
+        </div>
+      </div>
+      <div style={{ textAlign: 'center', marginTop: 32 }}>
+        <span className="lp-nav-link" onClick={() => navigate('landing')}>← Back to landing</span>
+      </div>
+    </div>
+  </div>
+);
+
+// ================================================================
+// PUBLIC: AuthConnect
+// ================================================================
+const AuthConnect = ({ navigate, onConnect }) => {
+  const [email, setEmail] = useState('');
+  return (
+    <div className="lp" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 20 }}>
+      <div className="card" style={{ width: '100%', maxWidth: 440, padding: 36 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+          <SortsLogoMark size={48} />
+        </div>
+        <div className="t-h1 mb-2" style={{ textAlign: 'center' }}>Connect to SORTS</div>
+        <p className="t-sm text-muted mb-6" style={{ textAlign: 'center' }}>Email + embedded wallet via Privy. No seed phrase required.</p>
+        <button className="btn btn-cyan w-full mb-3" onClick={() => { onConnect(); navigate('role'); }}>
+          <Icon name="wallet" size={16} /> Connect external wallet
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0', color: 'var(--text-3)', fontSize: 11, letterSpacing: 0.1 }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }}></div>OR<div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }}></div>
+        </div>
+        <div className="field mb-4">
+          <label className="field-label">Email</label>
+          <input className="input" placeholder="you@protocol.xyz" value={email} onChange={e => setEmail(e.target.value)} />
+        </div>
+        <button className="btn btn-outline w-full" onClick={() => { onConnect(); navigate('role'); }}>Continue with email</button>
+        <div style={{ marginTop: 20, fontSize: 11.5, color: 'var(--text-3)', textAlign: 'center' }}>
+          By continuing you agree to SORTS protocol terms.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ================================================================
+// PUBLIC: JoinPage
+// ================================================================
+const JoinPage = ({ navigate, communityId, onConnect, walletConnected }) => {
+  const community = MOCK_COMMUNITIES.find(c => c.id === communityId) || MOCK_COMMUNITIES[0];
+  const [selectedTier, setSelectedTier] = useState('pro');
+
+  return (
+    <div className="lp" style={{ minHeight: '100vh' }}>
+      <nav className="lp-nav">
+        <div onClick={() => navigate('landing')} style={{ cursor: 'pointer' }}>
+          <SortsLogoFull markSize={28} wordmarkSize={15} />
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('landing')}>Back</button>
+        </div>
+      </nav>
+      <div className="lp-section" style={{ paddingTop: 60 }}>
+        {/* Hero */}
+        <div className="card" style={{ padding: 40, background: 'linear-gradient(145deg, rgba(45,232,224,0.04), transparent)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
+            <div style={{ width: 80, height: 80, borderRadius: 20, background: 'var(--cyan-dim)', border: '1px solid var(--border-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 700, color: 'var(--cyan)', fontFamily: 'Space Grotesk' }}>
+              {community.name[0]}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <ChainBadge chain={community.chain} />
+                <PrivacyBadge label="Encrypted membership" />
+              </div>
+              <h1 className="t-h1 mb-2" style={{ fontSize: 32 }}>{community.name}</h1>
+              <p className="t-body text-muted">{community.members.toLocaleString()} aggregate members · {community.contentCount} pieces of gated content · Run by Alpha Signals Research</p>
+            </div>
+          </div>
+          <p className="t-body mt-6" style={{ fontSize: 15, lineHeight: 1.7 }}>
+            A confidential alpha and onchain research community. Deep weekly research notes, live alpha calls, and structural market analysis. All memberships are encrypted by default — your participation is private.
+          </p>
+        </div>
+
+        {/* Privacy promise */}
+        <div className="card mt-4" style={{ background: 'var(--cyan-dim)', borderColor: 'var(--border-cyan)' }}>
+          <div className="flex items-start gap-3">
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(45,232,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Icon name="shield" size={18} color="var(--cyan)" />
+            </div>
+            <div>
+              <div className="t-h3 mb-1" style={{ color: 'var(--cyan)' }}>Privacy promise</div>
+              <p className="t-sm" style={{ color: 'var(--text-1)' }}>
+                Your membership and tier are encrypted at the protocol layer. The creator sees only aggregate stats — never your identity, address, or which tier you bought.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Tier selection */}
+        <h2 className="t-h2 mt-8 mb-4">Choose your tier</h2>
+        <div className="g3">
+          {MOCK_TIERS.map(t => (
+            <div key={t.id}
+              className={`tier-card ${selectedTier === t.id ? 'selected' : ''} ${t.featured ? 'featured' : ''}`}
+              onClick={() => setSelectedTier(t.id)}>
+              {t.featured && (
+                <div style={{ position: 'absolute', top: -10, right: 16, padding: '3px 10px', background: 'var(--gold)', color: '#000', fontSize: 10, fontWeight: 700, letterSpacing: 0.1, textTransform: 'uppercase', borderRadius: 999 }}>
+                  Most popular
+                </div>
+              )}
+              <div className="t-label mb-2">{t.name}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 14 }}>
+                <span style={{ fontFamily: 'Space Grotesk', fontSize: 32, fontWeight: 700 }}>${t.price}</span>
+                <span className="text-muted t-sm">/ {t.duration}d USDC</span>
+              </div>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+                {t.benefits.map((b, i) => (
+                  <li key={i} style={{ display: 'flex', gap: 8, color: 'var(--text-2)' }}>
+                    <Icon name="check" size={14} color="var(--cyan)" /> {b}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        {/* Subscribe CTA */}
+        <div className="card mt-6" style={{ padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div className="t-h3 mb-1">Ready to subscribe?</div>
+            <div className="t-sm text-muted">{!walletConnected ? 'Connect wallet via Privy to continue.' : `Pay $${MOCK_TIERS.find(t => t.id === selectedTier).price} USDC to subscribe to ${MOCK_TIERS.find(t => t.id === selectedTier).name}.`}</div>
+          </div>
+          <button className="btn btn-cyan btn-lg" onClick={() => { if (!walletConnected) { onConnect(); } navigate('subscribe', { cid: community.id, tier: selectedTier }); }}>
+            <Icon name="wallet" size={16} /> {walletConnected ? `Subscribe to ${MOCK_TIERS.find(t => t.id === selectedTier).name}` : 'Connect & subscribe'}
+          </button>
+        </div>
+
+        {/* FAQ */}
+        <h2 className="t-h2 mt-8 mb-4">Common questions</h2>
+        <div className="card">
+          {[
+            { q: 'Will the creator see that I joined?', a: 'No. Your individual membership is encrypted. The creator only sees aggregate counts.' },
+            { q: 'Will my wallet address be public?', a: 'No. SORTS uses confidential tokens (ERC-7984). Membership is not enumerable onchain.' },
+            { q: 'Can I cancel?', a: 'Subscriptions auto-expire when the duration ends. You renew explicitly — there is no auto-billing.' },
+            { q: 'What chains are supported?', a: 'Phase 1: Arbitrum Sepolia. Phase 2 (adapter-ready): Solana Devnet via the chain adapter pattern.' },
+          ].map((f, i) => (
+            <div key={i} className="faq-item">
+              <div className="faq-q">
+                <span>{f.q}</span>
+                <Icon name="chevron_down" size={16} color="var(--text-3)" />
+              </div>
+              <div className="faq-a">{f.a}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ================================================================
+// SUBSCRIBE FLOW
+// ================================================================
+const SubscribeFlow = ({ navigate, communityId, tierId, onConnect, walletConnected }) => {
+  const community = MOCK_COMMUNITIES.find(c => c.id === communityId) || MOCK_COMMUNITIES[0];
+  const tier = MOCK_TIERS.find(t => t.id === tierId) || MOCK_TIERS[1];
+  const [step, setStep] = useState(walletConnected ? 2 : 1);
+  const steps = ['Tier', 'Wallet', 'Review', 'Sign', 'Active'];
+
+  const sign = () => {
+    setStep(4);
+    setTimeout(() => setStep(5), 1800);
+  };
+
+  return (
+    <div className="lp" style={{ minHeight: '100vh', padding: '60px 20px' }}>
+      <div style={{ maxWidth: 600, margin: '0 auto' }}>
+        <div onClick={() => navigate('landing')} style={{ cursor: 'pointer', marginBottom: 28, display: 'flex', justifyContent: 'center' }}>
+          <SortsLogoFull markSize={32} wordmarkSize={16} />
+        </div>
+
+        <div className="steps-row">
+          {steps.map((s, i) => (
+            <React.Fragment key={i}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div className={`step-node ${step === i + 1 ? 'active' : ''} ${step > i + 1 ? 'done' : ''}`}>
+                  {step > i + 1 ? <Icon name="check" size={14} /> : i + 1}
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 500, color: step >= i + 1 ? 'var(--text-1)' : 'var(--text-3)', letterSpacing: 0.1, textTransform: 'uppercase' }}>{s}</div>
+              </div>
+              {i < steps.length - 1 && <div className={`step-connector ${step > i + 1 ? 'done' : ''}`} />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        <div className="card" style={{ padding: 32 }}>
+          {step === 1 && (
+            <>
+              <div className="t-h2 mb-2">Selected: {tier.name}</div>
+              <p className="t-sm text-muted mb-5">${tier.price} USDC for {tier.duration} days of access to {community.name}.</p>
+              <button className="btn btn-cyan btn-lg w-full" onClick={() => setStep(2)}>Continue</button>
+            </>
+          )}
+          {step === 2 && (
+            <>
+              <div className="t-h2 mb-2">Connect wallet</div>
+              <p className="t-sm text-muted mb-5">Sign in with email (Privy embedded wallet) or connect an external wallet.</p>
+              <button className="btn btn-cyan btn-lg w-full mb-3" onClick={() => { onConnect(); setStep(3); }}>
+                <Icon name="wallet" size={16} /> Connect with Privy
+              </button>
+              <button className="btn btn-outline btn-lg w-full" onClick={() => { onConnect(); setStep(3); }}>External wallet</button>
+            </>
+          )}
+          {step === 3 && (
+            <>
+              <div className="t-h2 mb-3">Review</div>
+              <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: 18, marginBottom: 18 }}>
+                <div className="flex justify-between mb-3"><span className="text-muted t-sm">Community</span><span className="t-sm">{community.name}</span></div>
+                <div className="flex justify-between mb-3"><span className="text-muted t-sm">Tier</span><span className="t-sm">{tier.name}</span></div>
+                <div className="flex justify-between mb-3"><span className="text-muted t-sm">Duration</span><span className="t-sm">{tier.duration} days</span></div>
+                <div className="flex justify-between mb-3"><span className="text-muted t-sm">Network</span><ChainBadge chain={community.chain} /></div>
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="t-sm">Total</span>
+                  <span className="t-h3 text-gold">${tier.price} USDC</span>
+                </div>
+              </div>
+              <button className="btn btn-cyan btn-lg w-full" onClick={sign}>Sign transaction</button>
+            </>
+          )}
+          {step === 4 && (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <div style={{ width: 56, height: 56, margin: '0 auto 18px', borderRadius: '50%', border: '3px solid var(--cyan-dim)', borderTopColor: 'var(--cyan)', animation: 'spin 1s linear infinite' }}></div>
+              <div className="t-h2 mb-2">Confirming…</div>
+              <p className="t-sm text-muted">Encrypted membership token being minted on Arbitrum Sepolia.</p>
+              <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+            </div>
+          )}
+          {step === 5 && (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <div style={{ width: 64, height: 64, margin: '0 auto 18px', borderRadius: '50%', background: 'var(--success-dim)', border: '1px solid rgba(34,197,94,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="check" size={32} color="var(--success)" />
+              </div>
+              <div className="t-h2 mb-2">Membership active</div>
+              <p className="t-sm text-muted mb-5">Your encrypted membership token has been minted. Welcome to {community.name}.</p>
+              <button className="btn btn-cyan btn-lg w-full" onClick={() => navigate('app_feed', { cid: community.id })}>Enter community</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ================================================================
+// CREATOR SCREENS
+// ================================================================
+const CreatorOverview = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <div className="flex items-center justify-between mb-5 wrap gap-3">
+      <div>
+        <h1 className="t-h1">Studio Overview</h1>
+        <p className="t-sm text-muted mt-1">Aggregate operating dashboard across all your communities.</p>
+      </div>
+      <div className="flex gap-2">
+        <PrivacyBadge label="Aggregate-only data" />
+        <button className="btn btn-primary" onClick={() => navigate('studio_create')}><Icon name="plus" size={14} /> New community</button>
+      </div>
+    </div>
+
+    {/* Privacy banner */}
+    <div className="card mb-5" style={{ background: 'var(--cyan-dim)', borderColor: 'var(--border-cyan)', padding: 16 }}>
+      <div className="flex items-start gap-3">
+        <Icon name="shield" size={18} color="var(--cyan)" />
+        <div className="t-sm" style={{ color: 'var(--text-1)' }}>
+          <strong style={{ color: 'var(--cyan)' }}>Creator-blindness enforced.</strong>{' '}
+          Individual member identities and exact tier ownership are hidden by protocol design. You see only aggregate stats — never a member list.
+        </div>
+      </div>
+    </div>
+
+    <div className="g4 mb-6">
+      <Stat value="1,631" label="Aggregate members" delta="+128 / 30d" />
+      <Stat value="$28,040" label="Monthly revenue" delta="+12% MoM" color="var(--gold)" />
+      <Stat value="1,524" label="Active subscriptions" />
+      <Stat value="98.4%" label="Access success rate" color="var(--success)" />
+    </div>
+
+    <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <div className="t-h2">Communities</div>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('studio_communities')}>View all <Icon name="arrow_right" size={12} /></button>
+        </div>
+        <div className="flex flex-col gap-3">
+          {MOCK_COMMUNITIES.map(c => (
+            <div key={c.id} className="card-sm card-hover" onClick={() => navigate('studio_communities', { cid: c.id })}>
+              <div className="flex items-center gap-3">
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: c.color, opacity: 0.18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, color: c.color, fontFamily: 'Space Grotesk' }}>{c.name[0]}</div>
+                <div style={{ flex: 1 }}>
+                  <div className="flex items-center gap-2 mb-1"><strong>{c.name}</strong><ChainBadge chain={c.chain} /></div>
+                  <div className="t-xs text-muted">{c.members.toLocaleString()} members · ${c.mrr.toLocaleString()}/mo · {c.contentCount} content</div>
+                </div>
+                <span className={`badge ${c.status === 'live' ? 'badge-success' : 'badge-warning'}`}>{c.status}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col gap-4">
+        <div className="card">
+          <div className="t-label mb-3">Upcoming events</div>
+          {MOCK_EVENTS.slice(0, 3).map(e => (
+            <div key={e.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+              <div className="t-sm" style={{ fontWeight: 500 }}>{e.title}</div>
+              <div className="t-xs text-muted">{e.date} · {e.time} · {e.rsvps} RSVPs</div>
+            </div>
+          ))}
+        </div>
+        <div className="card">
+          <div className="t-label mb-3">Health score</div>
+          <div className="stat-val text-cyan">87</div>
+          <div className="t-xs text-muted">Engagement & retention healthy</div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const CreatorCommunities = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <div className="flex items-center justify-between mb-5">
+      <h1 className="t-h1">Communities</h1>
+      <button className="btn btn-primary" onClick={() => navigate('studio_create')}><Icon name="plus" size={14} /> New community</button>
+    </div>
+    <div className="g3">
+      {MOCK_COMMUNITIES.map(c => (
+        <div key={c.id} className="card card-hover">
+          <div className="flex items-center gap-3 mb-4">
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: c.color, opacity: 0.2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, color: c.color, fontFamily: 'Space Grotesk' }}>{c.name[0]}</div>
+            <div>
+              <div className="t-h3">{c.name}</div>
+              <div className="t-xs text-muted">{c.symbol}</div>
+            </div>
+          </div>
+          <div className="flex gap-2 mb-4 wrap">
+            <ChainBadge chain={c.chain} />
+            <span className={`badge ${c.status === 'live' ? 'badge-success' : 'badge-warning'}`}>{c.status}</span>
+          </div>
+          <div className="g3 mb-4" style={{ gap: 8 }}>
+            <div><div className="t-xs text-muted">Members</div><div className="t-mono" style={{ fontSize: 14, fontWeight: 600 }}>{c.members.toLocaleString()}</div></div>
+            <div><div className="t-xs text-muted">MRR</div><div className="t-mono" style={{ fontSize: 14, fontWeight: 600 }}>${c.mrr.toLocaleString()}</div></div>
+            <div><div className="t-xs text-muted">Content</div><div className="t-mono" style={{ fontSize: 14, fontWeight: 600 }}>{c.contentCount}</div></div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-outline btn-sm flex-1" onClick={() => navigate('studio_invites', { cid: c.id })}><Icon name="invite" size={12} /> Invite</button>
+            <button className="btn btn-secondary btn-sm flex-1" onClick={() => navigate('studio_content', { cid: c.id })}>Open Studio</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const CreateCommunityWizard = ({ navigate }) => {
+  const [step, setStep] = useState(1);
+  const [data, setData] = useState({ name: '', symbol: '', desc: '', category: 'alpha', chain: 'arbitrum' });
+  const [tiers, setTiers] = useState([...MOCK_TIERS]);
+
+  const update = (k, v) => setData({ ...data, [k]: v });
+  const next = () => setStep(Math.min(5, step + 1));
+  const back = () => setStep(Math.max(1, step - 1));
+
+  const stepLabels = ['Identity', 'Tiers', 'Privacy & chain', 'Review', 'Deploy'];
+
+  return (
+    <div className="page-inner">
+      <div className="flex items-center gap-2 mb-2 text-muted t-sm" onClick={() => navigate('studio_communities')} style={{ cursor: 'pointer' }}>
+        <Icon name="chevron_right" size={14} style={{ transform: 'rotate(180deg)' }} /> Back to communities
+      </div>
+      <h1 className="t-h1 mb-5">Create community</h1>
+
+      <div className="steps-row">
+        {stepLabels.map((s, i) => (
+          <React.Fragment key={i}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <div className={`step-node ${step === i + 1 ? 'active' : ''} ${step > i + 1 ? 'done' : ''}`}>
+                {step > i + 1 ? <Icon name="check" size={14} /> : i + 1}
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 500, color: step >= i + 1 ? 'var(--text-1)' : 'var(--text-3)', letterSpacing: 0.08, textTransform: 'uppercase' }}>{s}</div>
+            </div>
+            {i < stepLabels.length - 1 && <div className={`step-connector ${step > i + 1 ? 'done' : ''}`} />}
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div className="card" style={{ padding: 32 }}>
+        {step === 1 && (
+          <>
+            <div className="t-h2 mb-4">Community identity</div>
+            <div className="flex flex-col gap-4">
+              <div className="g2">
+                <div className="field"><label className="field-label">Name</label><input className="input" value={data.name} onChange={e => update('name', e.target.value)} placeholder="Alpha Signals" /></div>
+                <div className="field"><label className="field-label">Symbol</label><input className="input" value={data.symbol} onChange={e => update('symbol', e.target.value)} placeholder="ASIG" /></div>
+              </div>
+              <div className="field"><label className="field-label">Description</label><textarea className="textarea" value={data.desc} onChange={e => update('desc', e.target.value)} placeholder="What is your community about?" /></div>
+              <div className="g2">
+                <div className="field"><label className="field-label">Category</label>
+                  <select className="select" value={data.category} onChange={e => update('category', e.target.value)}>
+                    <option value="alpha">Alpha & Trading</option>
+                    <option value="research">Research DAO</option>
+                    <option value="education">Course Creator</option>
+                    <option value="institution">Institution</option>
+                  </select>
+                </div>
+                <div className="field"><label className="field-label">Logo</label>
+                  <button className="btn btn-outline w-full" style={{ height: 40 }}><Icon name="upload" size={14} /> Upload</button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <div className="t-h2">Tiers</div>
+              <button className="btn btn-outline btn-sm" onClick={() => setTiers([...tiers, { id: 'new'+tiers.length, name: 'New Tier', price: 0, duration: 30, benefits: [] }])}><Icon name="plus" size={12} /> Add tier</button>
+            </div>
+            <div className="flex flex-col gap-3">
+              {tiers.map((t, i) => (
+                <div key={i} className="card-sm">
+                  <div className="g3" style={{ gap: 12 }}>
+                    <div className="field"><label className="field-label">Name</label><input className="input" value={t.name} onChange={e => { const c = [...tiers]; c[i].name = e.target.value; setTiers(c); }} /></div>
+                    <div className="field"><label className="field-label">Price (USDC)</label><input className="input" type="number" value={t.price} onChange={e => { const c = [...tiers]; c[i].price = +e.target.value; setTiers(c); }} /></div>
+                    <div className="field"><label className="field-label">Duration (days)</label><input className="input" type="number" value={t.duration} onChange={e => { const c = [...tiers]; c[i].duration = +e.target.value; setTiers(c); }} /></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {step === 3 && (
+          <>
+            <div className="t-h2 mb-4">Privacy & chain</div>
+            <div className="card-sm mb-4" style={{ background: 'var(--cyan-dim)', borderColor: 'var(--border-cyan)' }}>
+              <div className="flex items-start gap-3">
+                <Icon name="shield" size={18} color="var(--cyan)" />
+                <div>
+                  <strong className="text-cyan">Privacy is always enforced.</strong>
+                  <p className="t-sm text-muted mt-1">Confidential membership tokens (ERC-7984), TEE-backed access checks, and aggregate-only analytics are mandatory and cannot be disabled.</p>
+                </div>
+              </div>
+            </div>
+            <div className="field mb-4">
+              <label className="field-label">Network</label>
+              <div className="g2 gap-3">
+                <div onClick={() => update('chain', 'arbitrum')} className={`tier-card ${data.chain === 'arbitrum' ? 'selected' : ''}`}>
+                  <div className="flex items-center gap-2 mb-2"><ChainBadge chain="arbitrum" /><span className="badge badge-success">Live</span></div>
+                  <p className="t-xs text-muted">EVM with confidential tokens via NOX TEE</p>
+                </div>
+                <div onClick={() => update('chain', 'solana')} className={`tier-card ${data.chain === 'solana' ? 'selected' : ''}`} style={{ opacity: 0.6 }}>
+                  <div className="flex items-center gap-2 mb-2"><ChainBadge chain="solana" /><span className="badge badge-warning">Adapter-ready</span></div>
+                  <p className="t-xs text-muted">Encrypt FHE + IKA dWallet (Phase 2)</p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+        {step === 4 && (
+          <>
+            <div className="t-h2 mb-4">Review</div>
+            <div className="card-sm mb-3"><div className="t-label mb-2">Identity</div><div className="t-sm">{data.name || '—'} · {data.symbol || '—'} · {data.category}</div></div>
+            <div className="card-sm mb-3"><div className="t-label mb-2">Tiers</div><div className="t-sm">{tiers.map(t => `${t.name} ($${t.price})`).join(' · ')}</div></div>
+            <div className="card-sm mb-3"><div className="t-label mb-2">Network</div><ChainBadge chain={data.chain} /></div>
+            <div className="card-sm" style={{ background: 'var(--warning-dim)', borderColor: 'rgba(245,158,11,0.3)' }}>
+              <div className="t-sm"><strong className="text-warn">Deploy gas:</strong> ~0.005 ETH on Arbitrum Sepolia. Once deployed, contract addresses are immutable.</div>
+            </div>
+          </>
+        )}
+        {step === 5 && (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ width: 72, height: 72, margin: '0 auto 20px', borderRadius: '50%', background: 'var(--success-dim)', border: '1px solid rgba(34,197,94,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="check" size={36} color="var(--success)" />
+            </div>
+            <div className="t-h1 mb-2">Deployed</div>
+            <p className="t-sm text-muted mb-5">{data.name} is live on Arbitrum Sepolia.</p>
+            <div className="flex gap-2 justify-center wrap">
+              <button className="btn btn-secondary" onClick={() => navigate('studio_invites')}><Icon name="invite" size={14} /> Get invite link</button>
+              <button className="btn btn-primary" onClick={() => navigate('studio_content')}><Icon name="plus" size={14} /> Create first post</button>
+            </div>
+          </div>
+        )}
+
+        {step < 5 && (
+          <div className="flex justify-between mt-6">
+            <button className="btn btn-ghost" onClick={back} disabled={step === 1}>Back</button>
+            <button className="btn btn-primary" onClick={step === 4 ? () => { setStep(5); } : next}>
+              {step === 4 ? 'Deploy →' : 'Continue'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const CreatorContentManager = ({ navigate }) => {
+  const [tab, setTab] = useState('published');
+  const [showEditor, setShowEditor] = useState(false);
+  return (
+    <div className="page-inner-wide">
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="t-h1">Content</h1>
+        <button className="btn btn-primary" onClick={() => setShowEditor(true)}><Icon name="plus" size={14} /> New post</button>
+      </div>
+      <div className="tab-bar">
+        <button className={`tab-item ${tab === 'published' ? 'active' : ''}`} onClick={() => setTab('published')}>Published</button>
+        <button className={`tab-item ${tab === 'drafts' ? 'active' : ''}`} onClick={() => setTab('drafts')}>Drafts</button>
+        <button className={`tab-item ${tab === 'scheduled' ? 'active' : ''}`} onClick={() => setTab('scheduled')}>Scheduled</button>
+      </div>
+      <div className="card" style={{ padding: 0 }}>
+        <table className="dtable">
+          <thead><tr><th>Title</th><th>Type</th><th>Tier</th><th>Status</th><th>Engagement</th></tr></thead>
+          <tbody>
+            {MOCK_POSTS.map(p => (
+              <tr key={p.id} style={{ cursor: 'pointer' }}>
+                <td><strong>{p.title}</strong></td>
+                <td><span className="badge badge-default">{p.type}</span></td>
+                <td><span className={`badge ${p.tier === 'vip' ? 'badge-gold' : p.tier === 'pro' ? 'badge-orange' : 'badge-cyan'}`}>{p.tier}</span></td>
+                <td><span className="badge badge-success">live</span></td>
+                <td className="t-mono text-muted">— aggregate only</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showEditor && (
+        <div className="modal-bg" onClick={() => setShowEditor(false)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="t-h2 mb-4">New post</div>
+            <div className="flex flex-col gap-4">
+              <div className="field"><label className="field-label">Title</label><input className="input" placeholder="Post title…" /></div>
+              <div className="field"><label className="field-label">Body</label><textarea className="textarea" style={{ minHeight: 160 }} placeholder="Write your post…" /></div>
+              <div className="g2">
+                <div className="field"><label className="field-label">Minimum tier</label>
+                  <select className="select"><option>Basic</option><option>Pro</option><option>VIP</option></select>
+                </div>
+                <div className="field"><label className="field-label">Type</label>
+                  <select className="select"><option>Post</option><option>Alpha note</option><option>Research note</option><option>File</option><option>Video</option></select>
+                </div>
+              </div>
+              <div className="card-sm" style={{ background: 'var(--cyan-dim)', borderColor: 'var(--border-cyan)' }}>
+                <div className="flex items-center gap-2 t-sm"><Icon name="lock" size={14} color="var(--cyan)" /><span>Anti-piracy: access tokens expire and re-verify on every fetch.</span></div>
+              </div>
+              <div className="flex justify-between">
+                <button className="btn btn-ghost" onClick={() => setShowEditor(false)}>Cancel</button>
+                <div className="flex gap-2">
+                  <button className="btn btn-outline">Save draft</button>
+                  <button className="btn btn-primary">Publish</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CreatorClassroomBuilder = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <div className="flex items-center justify-between mb-5">
+      <h1 className="t-h1">Classroom builder</h1>
+      <button className="btn btn-primary"><Icon name="plus" size={14} /> New course</button>
+    </div>
+    <div className="g3">
+      {MOCK_COURSES.map(c => (
+        <div key={c.id} className="card card-hover">
+          <div className="flex items-center justify-between mb-3">
+            <span className={`badge ${c.tier === 'pro' ? 'badge-orange' : 'badge-cyan'}`}>{c.tier}</span>
+            <button className="ic-btn"><Icon name="settings" size={14} /></button>
+          </div>
+          <div className="t-h3 mb-1">{c.title}</div>
+          <div className="t-xs text-muted mb-4">{c.lessons} lessons</div>
+          <div className="flex gap-2">
+            <button className="btn btn-outline btn-sm flex-1">Edit</button>
+            <button className="btn btn-secondary btn-sm flex-1"><Icon name="eye" size={12} /> Preview as member</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const CreatorCalendarManager = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <div className="flex items-center justify-between mb-5">
+      <h1 className="t-h1">Events</h1>
+      <button className="btn btn-primary"><Icon name="plus" size={14} /> New event</button>
+    </div>
+    <div className="g3 mb-5">
+      <Stat value="3" label="Upcoming events" />
+      <Stat value="238" label="Total RSVPs" color="var(--cyan)" />
+      <Stat value="—" label="Member identities" />
+    </div>
+    <div className="card" style={{ padding: 0 }}>
+      <table className="dtable">
+        <thead><tr><th>Event</th><th>Date</th><th>Tier</th><th>RSVPs (aggregate)</th></tr></thead>
+        <tbody>
+          {MOCK_EVENTS.map(e => (
+            <tr key={e.id}>
+              <td><strong>{e.title}</strong></td>
+              <td className="t-mono">{e.date} · {e.time}</td>
+              <td><span className={`badge ${e.tier === 'vip' ? 'badge-gold' : e.tier === 'pro' ? 'badge-orange' : 'badge-cyan'}`}>{e.tier}</span></td>
+              <td className="t-mono">{e.rsvps}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
+const CreatorTierAccess = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <h1 className="t-h1 mb-2">Tiers & Access</h1>
+    <p className="t-sm text-muted mb-5">Configure pricing and content gates. Tier ownership is encrypted — even you cannot inspect which member holds which tier.</p>
+
+    <div className="card mb-5" style={{ background: 'var(--warning-dim)', borderColor: 'rgba(245,158,11,0.3)' }}>
+      <div className="flex items-start gap-3">
+        <Icon name="lock" size={18} color="var(--warning)" />
+        <div className="t-sm">
+          <strong style={{ color: 'var(--warning)' }}>Encrypted tier ownership.</strong> You can configure tiers and pricing, but the protocol does not expose the per-member tier list. Access checks happen inside the TEE.
+        </div>
+      </div>
+    </div>
+
+    <div className="g3 mb-6">
+      {MOCK_TIERS.map(t => (
+        <div key={t.id} className={`tier-card ${t.featured ? 'featured' : ''}`}>
+          <div className="t-label mb-2">{t.name}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 14 }}>
+            <span style={{ fontFamily: 'Space Grotesk', fontSize: 30, fontWeight: 700 }}>${t.price}</span>
+            <span className="text-muted t-sm">/ {t.duration}d</span>
+          </div>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, marginBottom: 16 }}>
+            {t.benefits.map((b, i) => (<li key={i} style={{ display: 'flex', gap: 8, color: 'var(--text-2)' }}><Icon name="check" size={14} color="var(--cyan)" /> {b}</li>))}
+          </ul>
+          <button className="btn btn-outline btn-sm w-full">Edit tier</button>
+        </div>
+      ))}
+    </div>
+
+    <div className="card">
+      <div className="t-h3 mb-3">Content access matrix</div>
+      <table className="dtable">
+        <thead><tr><th>Content type</th><th>Basic</th><th>Pro</th><th>VIP</th></tr></thead>
+        <tbody>
+          {[
+            ['Public posts', true, true, true],
+            ['Alpha notes', false, true, true],
+            ['Research notes', false, true, true],
+            ['Live calls', false, true, true],
+            ['Private chat', false, false, true],
+            ['1:1 access', false, false, true],
+          ].map((r, i) => (
+            <tr key={i}>
+              <td>{r[0]}</td>
+              {r.slice(1).map((v, j) => <td key={j}>{v ? <Icon name="check" size={14} color="var(--success)" /> : <span className="text-dim">—</span>}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
+const CreatorInvites = ({ navigate }) => {
+  const link = 'https://sorts.xyz/join/alpha-signals';
+  return (
+    <div className="page-inner-wide">
+      <h1 className="t-h1 mb-2">Invites</h1>
+      <p className="t-sm text-muted mb-5">Share your community. The join link routes to the public subscribe flow.</p>
+
+      <div className="g2 mb-5">
+        <div className="card">
+          <div className="t-label mb-3">Public join link</div>
+          <div className="flex items-center gap-2 mb-3" style={{ background: 'var(--bg-elevated)', padding: 10, borderRadius: 8 }}>
+            <Icon name="invite" size={14} color="var(--cyan)" />
+            <code className="t-mono" style={{ flex: 1, color: 'var(--text-1)' }}>{link}</code>
+            <button className="ic-btn"><Icon name="copy" size={14} /></button>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-outline btn-sm flex-1"><Icon name="qr" size={14} /> QR code</button>
+            <button className="btn btn-outline btn-sm flex-1"><Icon name="bot" size={14} /> Telegram</button>
+          </div>
+        </div>
+        <div className="card">
+          <div className="t-label mb-3">Public preview</div>
+          <p className="t-sm text-muted mb-4">Anyone with the link sees only your community description and tiers. No member list is exposed.</p>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('join', { cid: 'alpha-signals' })}><Icon name="eye" size={14} /> Preview join page</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="t-h3 mb-3">Referral & UTM (optional)</div>
+        <p className="t-xs text-muted mb-3">Add referral tags to track aggregate signup sources. Individual referrers are not tracked per privacy spec.</p>
+        <div className="g2">
+          <div className="field"><label className="field-label">Source</label><input className="input" placeholder="twitter / newsletter / podcast" /></div>
+          <div className="field"><label className="field-label">Campaign</label><input className="input" placeholder="launch-week" /></div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CreatorAnalytics = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <div className="flex items-center justify-between mb-5">
+      <div>
+        <h1 className="t-h1">Analytics</h1>
+        <p className="t-sm text-muted mt-1">All metrics are aggregate only — no individual member identity.</p>
+      </div>
+      <PrivacyBadge label="Aggregate-only" />
+    </div>
+
+    <div className="g4 mb-5">
+      <Stat value="$84,260" label="Revenue 90d" delta="+24%" color="var(--gold)" />
+      <Stat value="1,524" label="Active subs" delta="+128" />
+      <Stat value="68%" label="Retention 30d" color="var(--cyan)" />
+      <Stat value="92%" label="Course completion" color="var(--success)" />
+    </div>
+
+    <div className="card mb-5">
+      <div className="t-h3 mb-4">Revenue trend</div>
+      <div style={{ height: 220, display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+        {[42, 58, 49, 64, 55, 72, 81, 75, 88, 94, 89, 102].map((h, i) => (
+          <div key={i} style={{ flex: 1, height: `${h}%`, background: 'linear-gradient(180deg, var(--gold) 0%, var(--orange) 100%)', borderRadius: '4px 4px 0 0', opacity: 0.85 }}></div>
+        ))}
+      </div>
+      <div className="flex justify-between mt-2 t-xs text-muted">
+        <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+      </div>
+    </div>
+
+    <div className="g3">
+      <div className="card">
+        <div className="t-label mb-3">Content engagement</div>
+        {['Alpha notes', 'Research', 'Courses', 'Events'].map((c, i) => (
+          <div key={i} style={{ marginBottom: 12 }}>
+            <div className="flex justify-between mb-1 t-sm"><span>{c}</span><span className="text-muted t-mono">{[88, 72, 64, 51][i]}%</span></div>
+            <div style={{ height: 6, background: 'var(--bg-elevated)', borderRadius: 3 }}><div style={{ width: `${[88,72,64,51][i]}%`, height: '100%', background: 'var(--cyan)', borderRadius: 3 }}></div></div>
+          </div>
+        ))}
+      </div>
+      <div className="card">
+        <div className="t-label mb-3">Tier distribution (aggregate)</div>
+        {['Basic', 'Pro', 'VIP'].map((t, i) => (
+          <div key={i} className="flex justify-between mb-3"><span className="t-sm">{t}</span><span className="t-mono text-muted">{['52%','38%','10%'][i]}</span></div>
+        ))}
+        <p className="t-xs text-dim mt-3">Per-member tier ownership is encrypted. Only ratios are visible.</p>
+      </div>
+      <div className="card">
+        <div className="t-label mb-3">Leaderboard participation</div>
+        <div className="stat-val text-cyan">76%</div>
+        <p className="t-xs text-muted">of active members have public scoreboard presence (opt-in)</p>
+      </div>
+    </div>
+  </div>
+);
+
+const CreatorTelegramBot = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <h1 className="t-h1 mb-2">Telegram bot</h1>
+    <p className="t-sm text-muted mb-5">Bridge your community to Telegram. Members verify access without exposing identity.</p>
+
+    <div className="g2 mb-5">
+      <div className="card">
+        <div className="flex items-center gap-3 mb-3">
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--cyan-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="bot" size={22} color="var(--cyan)" />
+          </div>
+          <div>
+            <div className="t-h3">@SortsAlphaBot</div>
+            <span className="badge badge-success">Online</span>
+          </div>
+        </div>
+        <div className="t-sm text-muted mb-4">Linked to Alpha Signals. Members run /verify after subscribing.</div>
+        <button className="btn btn-outline btn-sm">Reconfigure</button>
+      </div>
+      <div className="card">
+        <div className="t-label mb-3">Setup checklist</div>
+        {[
+          { d: 'Bot deployed', done: true },
+          { d: 'Community linked', done: true },
+          { d: 'Access verification active', done: true },
+          { d: 'Welcome message customized', done: false },
+        ].map((s, i) => (
+          <div key={i} className="flex items-center gap-3 mb-2 t-sm">
+            <div style={{ width: 18, height: 18, borderRadius: '50%', background: s.done ? 'var(--success-dim)' : 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {s.done && <Icon name="check" size={11} color="var(--success)" />}
+            </div>
+            <span style={{ color: s.done ? 'var(--text-1)' : 'var(--text-2)' }}>{s.d}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div className="card">
+      <div className="t-h3 mb-3">Available commands</div>
+      <div className="g2">
+        {[['/start', 'Onboard new member'], ['/verify', 'Link wallet to telegram'], ['/status', 'Check membership state'], ['/content', 'Browse latest posts'], ['/courses', 'See course list'], ['/events', 'Upcoming events'], ['/points', 'Leaderboard rank'], ['/renew', 'Renew subscription']].map((c, i) => (
+          <div key={i} className="flex items-center gap-3" style={{ padding: 8 }}>
+            <code className="t-mono text-cyan" style={{ minWidth: 80 }}>{c[0]}</code>
+            <span className="t-sm text-muted">{c[1]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const CreatorPrivacyProof = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <h1 className="t-h1 mb-2">Privacy proof</h1>
+    <p className="t-sm text-muted mb-5">Cryptographic guarantees baked into the SORTS protocol.</p>
+
+    <div className="g2 mb-5">
+      {[
+        { ic: 'lock', t: 'Encrypted membership tokens', s: 'ERC-7984 confidential balance. The balanceOf() function is privileged and returns zero to non-owners.' },
+        { ic: 'eye_off', t: 'No enumerate-members function', s: 'There is no onchain method to list community members. The set is computationally invisible.' },
+        { ic: 'shield', t: 'Aggregate-only stats', s: 'Counts and ratios pass through the TEE before leaving the secure enclave. No raw membership data exits.' },
+        { ic: 'bolt', t: 'Anti-piracy content access', s: 'Each fetch issues a short-lived access token, validated against an encrypted entitlement store.' },
+      ].map((p, i) => (
+        <div key={i} className="card">
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--cyan-dim)', border: '1px solid var(--border-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <Icon name={p.ic} size={18} color="var(--cyan)" />
+          </div>
+          <div className="t-h3 mb-2">{p.t}</div>
+          <div className="t-sm text-muted">{p.s}</div>
+        </div>
+      ))}
+    </div>
+
+    <div className="card">
+      <div className="t-h3 mb-3">Chain adapter status</div>
+      <div className="flex flex-col gap-3">
+        {[
+          { name: 'Arbitrum Sepolia', tech: 'ERC-7984 + iExec NOX', status: 'live' },
+          { name: 'Solana Devnet', tech: 'Encrypt FHE + IKA dWallet', status: 'adapter' },
+        ].map((a, i) => (
+          <div key={i} className="card-sm flex items-center gap-3">
+            <ChainBadge chain={a.name.includes('Arbitrum') ? 'arbitrum' : 'solana'} />
+            <div className="flex-1">
+              <div className="t-sm">{a.tech}</div>
+            </div>
+            <span className={`badge ${a.status === 'live' ? 'badge-success' : 'badge-warning'}`}>{a.status === 'live' ? 'Live' : 'Adapter-ready'}</span>
+            <button className="ic-btn"><Icon name="arrow_right" size={14} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const CreatorSettings = ({ navigate }) => (
+  <div className="page-inner">
+    <h1 className="t-h1 mb-5">Settings</h1>
+    <div className="card mb-4">
+      <div className="t-h3 mb-3">Community profile</div>
+      <div className="flex flex-col gap-4">
+        <div className="g2">
+          <div className="field"><label className="field-label">Name</label><input className="input" defaultValue="Alpha Signals" /></div>
+          <div className="field"><label className="field-label">Symbol</label><input className="input" defaultValue="ASIG" /></div>
+        </div>
+        <div className="field"><label className="field-label">Description</label><textarea className="textarea" defaultValue="Confidential alpha and onchain research community." /></div>
+      </div>
+    </div>
+    <div className="card mb-4">
+      <div className="t-h3 mb-3">Network</div>
+      <div className="flex items-center justify-between">
+        <ChainBadge chain="arbitrum" />
+        <span className="badge badge-success">Live</span>
+      </div>
+    </div>
+    <div className="card" style={{ borderColor: 'rgba(239,68,68,0.3)' }}>
+      <div className="t-h3 mb-3 text-danger">Danger zone</div>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="t-sm">Pause new subscriptions</div>
+          <div className="t-xs text-muted">Existing members keep access until expiry</div>
+        </div>
+        <button className="btn btn-danger btn-sm">Pause</button>
+      </div>
+      <div className="sep"></div>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="t-sm">Export config</div>
+          <div className="t-xs text-muted">Download deploy + tier config as JSON</div>
+        </div>
+        <button className="btn btn-outline btn-sm"><Icon name="download" size={14} /> Export</button>
+      </div>
+    </div>
+  </div>
+);
+
+// ================================================================
+// SUBSCRIBER SCREENS
+// ================================================================
+const SubscriberFeed = ({ navigate, communityId, hasAccess = true }) => {
+  const [tab, setTab] = useState('all');
+  const filtered = MOCK_POSTS.filter(p => tab === 'all' || p.type === tab);
+  return (
+    <div className="page-inner">
+      {/* Membership banner */}
+      <div className="card mb-5" style={{ background: 'var(--success-dim)', borderColor: 'rgba(34,197,94,0.3)', padding: 14 }}>
+        <div className="flex items-center gap-3">
+          <Icon name="check" size={18} color="var(--success)" />
+          <div className="flex-1 t-sm"><strong className="text-success">Pro membership active</strong> · Renews May 28, 2026</div>
+          <button className="btn btn-outline btn-sm" onClick={() => navigate('app_membership')}>Manage</button>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mb-3 wrap gap-3">
+        <h1 className="t-h1">Alpha Signals</h1>
+        <PrivacyBadge label="Encrypted membership" />
+      </div>
+
+      <div className="tab-bar">
+        {['all', 'announcement', 'alpha', 'research'].map(t => (
+          <button key={t} className={`tab-item ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t === 'all' ? 'All' : t}</button>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {filtered.map(p => p.locked ? (
+          <div key={p.id} className="card" style={{ position: 'relative', minHeight: 140 }}>
+            <div style={{ filter: 'blur(8px)', userSelect: 'none' }}>
+              <div className="t-h3 mb-2">{p.title}</div>
+              <div className="t-sm text-muted">{p.preview}</div>
+            </div>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(8,13,18,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: 12, gap: 8 }}>
+              <Icon name="lock" size={20} color="var(--gold)" />
+              <div className="t-sm" style={{ color: 'var(--gold)' }}>VIP tier required</div>
+              <button className="btn btn-outline btn-sm" onClick={() => navigate('app_membership')}>Upgrade tier</button>
+            </div>
+          </div>
+        ) : (
+          <div key={p.id} className="card card-hover">
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`badge ${p.tier === 'vip' ? 'badge-gold' : p.tier === 'pro' ? 'badge-orange' : 'badge-cyan'}`}>{p.tier}</span>
+              <span className="t-xs text-dim">{p.time}</span>
+            </div>
+            <div className="t-h3 mb-2">{p.title}</div>
+            <div className="t-sm text-muted">{p.preview}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const SubscriberClassroom = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <h1 className="t-h1 mb-5">Classroom</h1>
+    <div className="g3">
+      {MOCK_COURSES.map(c => (
+        <div key={c.id} className="card card-hover">
+          <div className="flex items-center justify-between mb-3">
+            <span className={`badge ${c.tier === 'pro' ? 'badge-orange' : 'badge-cyan'}`}>{c.tier}</span>
+            {c.progress === 0 && <span className="badge badge-default">New</span>}
+            {c.progress > 0 && c.progress < 1 && <span className="badge badge-success">{Math.round(c.progress * 100)}%</span>}
+          </div>
+          <div className="t-h3 mb-1">{c.title}</div>
+          <div className="t-xs text-muted mb-3">{c.lessons} lessons</div>
+          <div style={{ height: 4, background: 'var(--bg-elevated)', borderRadius: 2, marginBottom: 14 }}>
+            <div style={{ width: `${c.progress * 100}%`, height: '100%', background: 'var(--cyan)', borderRadius: 2 }}></div>
+          </div>
+          <button className="btn btn-cyan btn-sm w-full"><Icon name="play" size={12} /> {c.progress > 0 ? 'Continue' : 'Start course'}</button>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const SubscriberLibrary = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <h1 className="t-h1 mb-5">Library</h1>
+    <div className="grid" style={{ gridTemplateColumns: '200px 1fr', gap: 24 }}>
+      <div>
+        <div className="t-label mb-3">Collections</div>
+        {['All files', 'Research', 'Recordings', 'Templates', 'Reports'].map((c, i) => (
+          <button key={i} className={`nav-item ${i === 0 ? 'active' : ''}`}>{c}</button>
+        ))}
+      </div>
+      <div>
+        <div className="g3">
+          {[1,2,3,4,5,6].map(i => (
+            <div key={i} className="card card-hover">
+              <div style={{ width: '100%', height: 120, background: 'var(--bg-elevated)', borderRadius: 8, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="file" size={32} color="var(--text-3)" />
+              </div>
+              <div className="t-sm" style={{ fontWeight: 500 }}>Research_{i}_2026Q2.pdf</div>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="badge badge-orange">pro</span>
+                <span className="t-xs text-muted">2.4 MB</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const SubscriberCalendar = ({ navigate }) => (
+  <div className="page-inner-wide">
+    <div className="flex items-center justify-between mb-5">
+      <h1 className="t-h1">Calendar</h1>
+      <div className="segmented">
+        <button className="active">List</button>
+        <button>Month</button>
+      </div>
+    </div>
+    <div className="flex flex-col gap-3">
+      {MOCK_EVENTS.map(e => (
+        <div key={e.id} className="card flex items-center gap-4 wrap">
+          <div style={{ width: 60, textAlign: 'center', padding: 10, background: 'var(--bg-elevated)', borderRadius: 8 }}>
+            <div className="t-mono" style={{ fontSize: 16, fontWeight: 600 }}>{e.date.split(' ')[1]}</div>
+            <div className="t-xs text-muted">{e.date.split(' ')[0]}</div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div className="flex items-center gap-2 mb-1">
+              <strong>{e.title}</strong>
+              <span className={`badge ${e.tier === 'vip' ? 'badge-gold' : e.tier === 'pro' ? 'badge-orange' : 'badge-cyan'}`}>{e.tier}</span>
+            </div>
+            <div className="t-xs text-muted">{e.time} · {e.rsvps} RSVPs</div>
+          </div>
+          <button className="btn btn-secondary btn-sm">RSVP</button>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const SubscriberLeaderboard = ({ navigate }) => (
+  <div className="page-inner">
+    <div className="flex items-center justify-between mb-5">
+      <h1 className="t-h1">Leaderboard</h1>
+      <PrivacyBadge label="Pseudonymous · opt-in" />
+    </div>
+    <div className="card" style={{ padding: 0 }}>
+      <table className="dtable">
+        <thead><tr><th>Rank</th><th>Member</th><th>Level</th><th>Points</th></tr></thead>
+        <tbody>
+          {MOCK_LEADERBOARD.map(m => (
+            <tr key={m.rank} style={{ background: m.you ? 'var(--cyan-dim)' : undefined }}>
+              <td className="t-mono">#{m.rank}</td>
+              <td><strong style={{ color: m.you ? 'var(--cyan)' : 'var(--text-1)' }}>{m.name}</strong> {m.you && <span className="badge badge-cyan">you</span>}</td>
+              <td><span className="badge badge-default">{m.level}</span></td>
+              <td className="t-mono text-gold">{m.points.toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p className="t-xs text-dim mt-3">Display name is pseudonymous. Wallet addresses are never exposed in scoreboards.</p>
+  </div>
+);
+
+const SubscriberMembership = ({ navigate }) => (
+  <div className="page-inner">
+    <h1 className="t-h1 mb-5">Membership</h1>
+    <div className="card mb-4" style={{ padding: 28 }}>
+      <div className="flex items-center justify-between mb-4 wrap gap-3">
+        <div>
+          <div className="t-label mb-2">Current tier</div>
+          <div className="flex items-center gap-3">
+            <span className="badge badge-orange" style={{ fontSize: 13, padding: '5px 12px' }}>Pro</span>
+            <ChainBadge chain="arbitrum" />
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div className="t-label mb-1">Expires</div>
+          <div className="t-h3 text-cyan">May 28, 2026</div>
+          <div className="t-xs text-muted">26 days remaining</div>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button className="btn btn-cyan flex-1">Renew Pro · $49</button>
+        <button className="btn btn-outline flex-1">Upgrade to VIP</button>
+      </div>
+    </div>
+
+    <div className="card mb-4" style={{ background: 'var(--cyan-dim)', borderColor: 'var(--border-cyan)' }}>
+      <div className="flex items-start gap-3">
+        <Icon name="shield" size={18} color="var(--cyan)" />
+        <div className="t-sm">
+          <strong className="text-cyan">Your membership is encrypted.</strong> The creator does not know which tier you hold or that you are a member. Renewal happens via signed transaction — no auto-billing.
+        </div>
+      </div>
+    </div>
+
+    <div className="card">
+      <div className="t-h3 mb-3">Transaction history</div>
+      <table className="dtable">
+        <thead><tr><th>Date</th><th>Action</th><th>Tx</th><th>Amount</th></tr></thead>
+        <tbody>
+          {[['Apr 28, 2026', 'Subscribe Pro', '0x4f2…a9d3', '$49'], ['Mar 28, 2026', 'Renew Pro', '0x9c1…f4a1', '$49'], ['Feb 28, 2026', 'Subscribe Basic', '0x2a8…d7e6', '$19']].map((r, i) => (
+            <tr key={i}><td>{r[0]}</td><td>{r[1]}</td><td className="t-mono text-cyan">{r[2]}</td><td className="t-mono text-gold">{r[3]}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
+const SubscriberTelegram = ({ navigate }) => (
+  <div className="page-inner">
+    <h1 className="t-h1 mb-5">Telegram link</h1>
+    <div className="card mb-4">
+      <div className="t-h3 mb-3">Connect Telegram</div>
+      <div className="flex flex-col gap-3 mb-4">
+        {['Open @SortsAlphaBot', 'Run /verify', 'Sign verification message', 'Receive access token'].map((s, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <div className="step-node done" style={{ width: 24, height: 24 }}>{i + 1}</div>
+            <span className="t-sm">{s}</span>
+          </div>
+        ))}
+      </div>
+      <button className="btn btn-cyan"><Icon name="bot" size={14} /> Open Telegram bot</button>
+    </div>
+    <div className="card">
+      <div className="t-h3 mb-3">Available commands</div>
+      <div className="flex flex-col gap-2">
+        {[['/status', 'Check your access state'], ['/content', 'Latest posts'], ['/courses', 'Course list'], ['/events', 'Upcoming events'], ['/points', 'Your scoreboard rank']].map((c, i) => (
+          <div key={i} className="flex items-center gap-3"><code className="t-mono text-cyan" style={{ minWidth: 80 }}>{c[0]}</code><span className="t-sm text-muted">{c[1]}</span></div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const SubscriberPrivacyCenter = ({ navigate }) => (
+  <div className="page-inner">
+    <h1 className="t-h1 mb-2">Privacy</h1>
+    <p className="t-sm text-muted mb-5">What's hidden, what's visible, and how SORTS enforces it.</p>
+
+    <div className="g2 mb-5">
+      <div className="card" style={{ borderColor: 'var(--border-cyan)' }}>
+        <div className="flex items-center gap-2 mb-3"><Icon name="eye_off" size={16} color="var(--cyan)" /><div className="t-h3 text-cyan">What the creator cannot see</div></div>
+        <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+          {['Your individual identity', 'Your wallet address', 'Which tier you hold', 'Whether you joined or left', 'Your in-app activity attribution'].map((s, i) => (
+            <li key={i} style={{ display: 'flex', gap: 8, color: 'var(--text-1)' }}><Icon name="lock" size={14} color="var(--cyan)" /> {s}</li>
+          ))}
+        </ul>
+      </div>
+      <div className="card">
+        <div className="flex items-center gap-2 mb-3"><Icon name="eye" size={16} color="var(--text-2)" /><div className="t-h3">What the creator can see</div></div>
+        <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+          {['Total aggregate member count', 'Aggregate tier distribution (ratios)', 'Aggregate revenue', 'Aggregate engagement metrics', 'Event RSVP totals'].map((s, i) => (
+            <li key={i} style={{ display: 'flex', gap: 8, color: 'var(--text-2)' }}><Icon name="check" size={14} color="var(--text-3)" /> {s}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+
+    <div className="card">
+      <div className="t-h3 mb-3">How it works</div>
+      <p className="t-sm text-muted mb-3">SORTS uses confidential token standards (ERC-7984), TEE-backed access checks (iExec NOX), and aggregate-only stats endpoints. Privacy is enforced at the protocol layer — not as a UI filter.</p>
+      <button className="btn btn-secondary btn-sm" onClick={() => navigate('studio_privacy')}><Icon name="shield" size={14} /> Read protocol details</button>
+    </div>
+  </div>
+);
+
+const AccountWallet = ({ navigate, walletConnected }) => (
+  <div className="page-inner">
+    <h1 className="t-h1 mb-5">Account</h1>
+    <div className="card mb-4">
+      <div className="t-h3 mb-3">Identity</div>
+      <div className="g2">
+        <div className="field"><label className="field-label">Email</label><input className="input" defaultValue="member@protocol.xyz" /></div>
+        <div className="field"><label className="field-label">Display name</label><input className="input" defaultValue="quietalpha" /></div>
+      </div>
+    </div>
+    <div className="card mb-4">
+      <div className="t-h3 mb-3">Wallet</div>
+      <div className="card-sm flex items-center gap-3">
+        <Icon name="wallet" size={20} color="var(--cyan)" />
+        <div className="flex-1">
+          <code className="t-mono">0xa1f4d8e7c92b3e5a8b6c0d9e7f1a3b3c2d4e5f6a</code>
+          <div className="t-xs text-muted">Privy embedded · Arbitrum Sepolia</div>
+        </div>
+        <span className="badge badge-success">connected</span>
+      </div>
+    </div>
+    <div className="card">
+      <div className="t-h3 mb-3">Security</div>
+      <div className="flex items-center justify-between mb-3"><div><div className="t-sm">Encrypted at rest</div><div className="t-xs text-muted">All identity data is encrypted in our DB</div></div><span className="badge badge-success">on</span></div>
+      <div className="flex items-center justify-between"><div><div className="t-sm">Disconnect wallet</div><div className="t-xs text-muted">Sign back in to restore access</div></div><button className="btn btn-danger btn-sm">Disconnect</button></div>
+    </div>
+  </div>
+);
+
+// ================================================================
+// ROUTER / MAIN APP
+// ================================================================
+function SORTSApp() {
+  const [page, setPage] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sorts_page') || '"landing"'); } catch { return 'landing'; }
+  });
+  const [params, setParams] = useState({});
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => { localStorage.setItem('sorts_page', JSON.stringify(page)); }, [page]);
+
+  const navigate = (p, ps = {}) => { setPage(p); setParams(ps); window.scrollTo(0, 0); };
+  const onConnect = () => { setWalletConnected(true); setToast({ message: 'Wallet connected', type: 'success' }); };
+
+  const isCreatorPage = page.startsWith('studio');
+  const isSubscriberPage = page.startsWith('app_');
+
+  const crumbs = useMemo(() => {
+    if (isCreatorPage) {
+      const found = CREATOR_NAV.find(n => n.id === page);
+      return ['Studio', found?.label || ''];
+    }
+    if (isSubscriberPage) {
+      const found = SUBSCRIBER_NAV.find(n => n.id === page);
+      return ['Alpha Signals', found?.label || ''];
+    }
+    return [page];
+  }, [page, isCreatorPage, isSubscriberPage]);
+
+  // PUBLIC routes
+  if (page === 'landing') return (<><LandingPage navigate={navigate} />{toast && <Toast {...toast} onClose={() => setToast(null)} />}</>);
+  if (page === 'role') return <RoleGateway navigate={navigate} />;
+  if (page === 'auth') return <AuthConnect navigate={navigate} onConnect={onConnect} />;
+  if (page === 'join') return <JoinPage navigate={navigate} communityId={params.cid} onConnect={onConnect} walletConnected={walletConnected} />;
+  if (page === 'subscribe') return <SubscribeFlow navigate={navigate} communityId={params.cid} tierId={params.tier} onConnect={onConnect} walletConnected={walletConnected} />;
+
+  // CREATOR
+  if (isCreatorPage) {
+    const screens = {
+      studio: <CreatorOverview navigate={navigate} />,
+      studio_communities: <CreatorCommunities navigate={navigate} />,
+      studio_create: <CreateCommunityWizard navigate={navigate} />,
+      studio_content: <CreatorContentManager navigate={navigate} />,
+      studio_classroom: <CreatorClassroomBuilder navigate={navigate} />,
+      studio_calendar: <CreatorCalendarManager navigate={navigate} />,
+      studio_tiers: <CreatorTierAccess navigate={navigate} />,
+      studio_invites: <CreatorInvites navigate={navigate} />,
+      studio_analytics: <CreatorAnalytics navigate={navigate} />,
+      studio_telegram: <CreatorTelegramBot navigate={navigate} />,
+      studio_privacy: <CreatorPrivacyProof navigate={navigate} />,
+      studio_settings: <CreatorSettings navigate={navigate} />,
+    };
+    return (
+      <>
+        <CreatorStudioLayout page={page} navigate={navigate} walletConnected={walletConnected} onConnectWallet={onConnect} crumbs={crumbs}>
+          {screens[page]}
+        </CreatorStudioLayout>
+        {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      </>
+    );
+  }
+
+  // SUBSCRIBER
+  if (isSubscriberPage || page === 'account') {
+    const screens = {
+      app_feed: <SubscriberFeed navigate={navigate} communityId={params.cid} />,
+      app_classroom: <SubscriberClassroom navigate={navigate} />,
+      app_library: <SubscriberLibrary navigate={navigate} />,
+      app_calendar: <SubscriberCalendar navigate={navigate} />,
+      app_leaderboard: <SubscriberLeaderboard navigate={navigate} />,
+      app_membership: <SubscriberMembership navigate={navigate} />,
+      app_telegram: <SubscriberTelegram navigate={navigate} />,
+      app_privacy: <SubscriberPrivacyCenter navigate={navigate} />,
+      account: <AccountWallet navigate={navigate} walletConnected={walletConnected} />,
+    };
+    return (
+      <>
+        <SubscriberAppLayout page={page} navigate={navigate} walletConnected={walletConnected} onConnectWallet={onConnect} crumbs={crumbs}>
+          {screens[page]}
+        </SubscriberAppLayout>
+        {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      </>
+    );
+  }
+
+  return <LandingPage navigate={navigate} />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<SORTSApp />);

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "business-logic-vulnerabilities": {
+      "source": "yaklang/hack-skills",
+      "sourceType": "github",
+      "skillPath": "skills/business-logic-vulnerabilities/SKILL.md",
+      "computedHash": "aea651db12144bf1d650b11dd8601909f265c05e60e193b316420112d01ce743"
+    },
+    "ethereum": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "ethereum/SKILL.md",
+      "computedHash": "1d6c2a66fb6d3c01ca95007e83d75346f5d7d8af77f4b673685ce24eee98b184"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-best-practices/SKILL.md",
+      "computedHash": "ca7b0c0c6e5f2750043f7f0cd72d16ac4e2abc48f9b5500d047a4b77a2506212"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
+    }
+  }
+}

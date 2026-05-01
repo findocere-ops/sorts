@@ -1,0 +1,623 @@
+{
+  "meta": {
+    "product_name": "SORTS",
+    "version": "1.0-uiux-spec",
+    "based_on": [
+      "SORTS_PRD.md",
+      "Skool public help center and pricing pages"
+    ],
+    "product_positioning": "Private, paid community platform inspired by Skool, redesigned for privacy-first creators, institutions, and research communities.",
+    "design_goal": "Make community monetization feel simple, trustworthy, premium, and low-friction while preserving membership privacy."
+  },
+  "core_principles": [
+    "Privacy is the hero, not a hidden setting.",
+    "Reduce creator workload: fewer clicks, clearer states, stronger defaults.",
+    "Show aggregate analytics only; never expose member lists or wallet-level detail.",
+    "Every page must answer: what can I do now, what is private, and what happens next?",
+    "Skool-like simplicity, but with more professional credibility for institutions and research groups.",
+    "Fast onboarding: public pages for discovery, wallet-gated actions only when necessary.",
+    "Design for dark mode first, with neutral professional styling instead of meme-heavy crypto aesthetics."
+  ],
+  "primary_personas": [
+    {
+      "id": "creator_alpha",
+      "name": "Crypto-native creator",
+      "needs": [
+        "Launch fast",
+        "Monetize tiers",
+        "Protect subscriber identity",
+        "Publish gated content",
+        "Share invite links"
+      ]
+    },
+    {
+      "id": "research_institute",
+      "name": "Research institute / DAO / analyst team",
+      "needs": [
+        "Confidential access control",
+        "Professional presentation",
+        "Auditability without doxxing members",
+        "Institution-friendly interface",
+        "Clear role-based administration"
+      ]
+    },
+    {
+      "id": "member",
+      "name": "Subscriber / analyst / student",
+      "needs": [
+        "Understand value before connecting wallet",
+        "Trust privacy model",
+        "Subscribe with minimal friction",
+        "See access status clearly",
+        "Retrieve gated content across web and Telegram"
+      ]
+    }
+  ],
+  "navigation_model": {
+    "public_routes": [
+      "/",
+      "/discover",
+      "/join/[communityId]",
+      "/about/[communityId]",
+      "/link"
+    ],
+    "authenticated_creator_routes": [
+      "/dashboard",
+      "/create",
+      "/dashboard/[communityId]/overview",
+      "/dashboard/[communityId]/content",
+      "/dashboard/[communityId]/access",
+      "/dashboard/[communityId]/settings",
+      "/dashboard/[communityId]/billing"
+    ],
+    "authenticated_member_routes": [
+      "/community/[communityId]",
+      "/community/[communityId]/library",
+      "/community/[communityId]/events",
+      "/community/[communityId]/account"
+    ],
+    "primary_nav_items": [
+      "Home",
+      "Discover",
+      "Dashboard",
+      "Create Community",
+      "Library",
+      "Events",
+      "Privacy",
+      "Settings"
+    ]
+  },
+  "global_ui_system": {
+    "layout": {
+      "desktop": "Left sidebar + top utility bar + main content column + contextual right panel when needed",
+      "tablet": "Collapsible sidebar + sticky top actions",
+      "mobile": "Bottom nav for members; drawer nav for creators"
+    },
+    "components": [
+      "AppShell",
+      "Sidebar",
+      "Topbar",
+      "CommandBar",
+      "CommunityCard",
+      "TierCard",
+      "ContentCard",
+      "EmptyState",
+      "PrivacyBadge",
+      "AggregateStatCard",
+      "WalletStatusBanner",
+      "TransactionStateModal",
+      "AccessGateCard",
+      "RolePill",
+      "AuditNotice",
+      "ActivityFeed",
+      "Composer",
+      "FilterBar",
+      "Table",
+      "RightRail"
+    ],
+    "interaction_rules": [
+      "Prefer single-primary-action screens.",
+      "Keep destructive actions separated from primary workflow.",
+      "Always show loading, success, failure, and empty states.",
+      "Always explain privacy-sensitive actions with inline microcopy.",
+      "Avoid exposing blockchain jargon first; progressive disclosure only."
+    ],
+    "tone": {
+      "brand": "calm, precise, premium, privacy-forward",
+      "microcopy": "direct, non-hype, confidence-building"
+    }
+  },
+  "page_flows": [
+    {
+      "route": "/",
+      "name": "Landing Page",
+      "goal": "Convert visitors into creators or members while explaining why Sorts is different from Skool-like community platforms.",
+      "audience": [
+        "creator_alpha",
+        "research_institute",
+        "member"
+      ],
+      "sections": [
+        "Hero with dual CTA",
+        "Proof of privacy section",
+        "How it works in 3 steps",
+        "Use-case cards",
+        "Featured communities / demo previews",
+        "FAQ",
+        "Footer"
+      ],
+      "primary_actions": [
+        "Create a community",
+        "Explore communities",
+        "See privacy architecture"
+      ],
+      "ux_notes": [
+        "Hero must explain private memberships in one sentence.",
+        "Show aggregate metrics examples, not fake member avatars.",
+        "Replace social-proof vanity counters with trust artifacts: chain, token standard, encryption model, real workflow."
+      ],
+      "states": {
+        "connected_wallet": "Show dashboard shortcut",
+        "not_connected": "Show connect wallet only when user picks a gated action"
+      }
+    },
+    {
+      "route": "/discover",
+      "name": "Discovery",
+      "goal": "Help users browse communities by theme without exposing private member identity.",
+      "audience": [
+        "member",
+        "creator_alpha",
+        "research_institute"
+      ],
+      "sections": [
+        "Search and filters",
+        "Community grid",
+        "Category chips",
+        "Sort controls",
+        "Quality and verification indicators"
+      ],
+      "primary_actions": [
+        "Open about page",
+        "Open join page",
+        "Save for later"
+      ],
+      "ux_notes": [
+        "Discovery should rank quality, engagement, and retention signals at the community level, never member-level identity.",
+        "Show category, description, posting cadence, content format, pricing floor, and privacy level."
+      ]
+    },
+    {
+      "route": "/create",
+      "name": "Create Community",
+      "goal": "Launch a community in one guided flow.",
+      "audience": [
+        "creator_alpha",
+        "research_institute"
+      ],
+      "flow_steps": [
+        "Connect wallet",
+        "Community basics",
+        "Tier setup",
+        "Branding and about page",
+        "Privacy defaults review",
+        "Deploy contract",
+        "Success and next steps"
+      ],
+      "fields": [
+        "community_name",
+        "symbol_max_5",
+        "description",
+        "category",
+        "cover_image",
+        "tiers[]: name, price_eth, duration_days, benefits, visibility_label",
+        "telegram_bot_toggle",
+        "invite_link_slug"
+      ],
+      "primary_actions": [
+        "Deploy community",
+        "Save draft locally",
+        "Review contract configuration"
+      ],
+      "ux_notes": [
+        "Use a stepper wizard, not one huge form.",
+        "Default to 3 tiers with editable templates: Basic, Pro, VIP.",
+        "Show live pricing summary and estimated member-facing display."
+      ]
+    },
+    {
+      "route": "/dashboard",
+      "name": "Creator Dashboard",
+      "goal": "Give creators a clean command center across communities.",
+      "audience": [
+        "creator_alpha",
+        "research_institute"
+      ],
+      "sections": [
+        "Aggregate portfolio stats",
+        "Community cards",
+        "Recent publishing activity",
+        "Revenue snapshot",
+        "Tasks / recommendations"
+      ],
+      "primary_actions": [
+        "Create new community",
+        "Open community workspace",
+        "Copy invite link"
+      ],
+      "ux_notes": [
+        "Never show subscriber list.",
+        "Cards should show total members, active ratio, revenue, latest content published, last sync status."
+      ]
+    },
+    {
+      "route": "/dashboard/[communityId]/overview",
+      "name": "Community Overview",
+      "goal": "Provide privacy-safe analytics and operational status.",
+      "audience": [
+        "creator_alpha",
+        "research_institute"
+      ],
+      "sections": [
+        "Aggregate stats row",
+        "Revenue chart",
+        "Membership health",
+        "Content performance",
+        "Access system health",
+        "Quick actions"
+      ],
+      "primary_actions": [
+        "Create post",
+        "Copy invite link",
+        "Open billing",
+        "Open access settings"
+      ],
+      "ux_notes": [
+        "Use aggregate numbers only.",
+        "Show active vs expired memberships, not who expired.",
+        "Add privacy notice: 'Individual members are intentionally hidden.'"
+      ]
+    },
+    {
+      "route": "/dashboard/[communityId]/content",
+      "name": "Content Management",
+      "goal": "Let creators publish and organize gated posts like a simpler, more professional Skool classroom + feed hybrid.",
+      "audience": [
+        "creator_alpha",
+        "research_institute"
+      ],
+      "sections": [
+        "Content header",
+        "Filters: all/basic/pro/vip/drafts",
+        "Post list",
+        "Composer drawer",
+        "Scheduling and visibility controls"
+      ],
+      "primary_actions": [
+        "New post",
+        "New resource",
+        "Edit access tier",
+        "Archive content"
+      ],
+      "content_types": [
+        "announcement",
+        "research note",
+        "lesson",
+        "resource file",
+        "link roundup",
+        "event recap"
+      ],
+      "ux_notes": [
+        "Default editor should be distraction-free.",
+        "Tier selector must be visually obvious.",
+        "Show what each tier can access without exposing who accessed it."
+      ]
+    },
+    {
+      "route": "/dashboard/[communityId]/access",
+      "name": "Access Control",
+      "goal": "Manage how privacy, expiry, and delivery work.",
+      "audience": [
+        "creator_alpha",
+        "research_institute"
+      ],
+      "sections": [
+        "Tier matrix",
+        "Expiry rules",
+        "Telegram linking health",
+        "Verification logs (aggregate/system only)",
+        "Security notices"
+      ],
+      "primary_actions": [
+        "Edit tier requirements",
+        "Test access check",
+        "Regenerate bot link flow"
+      ],
+      "ux_notes": [
+        "Do not expose wallet addresses in verification logs.",
+        "Show only counts, failure categories, and latest system events."
+      ]
+    },
+    {
+      "route": "/dashboard/[communityId]/billing",
+      "name": "Billing and Revenue",
+      "goal": "Let creators manage prices and inspect aggregate revenue safely.",
+      "audience": [
+        "creator_alpha",
+        "research_institute"
+      ],
+      "sections": [
+        "Revenue summary",
+        "Tier pricing table",
+        "Payout status",
+        "Transactions overview (aggregate only)",
+        "Invoice/export controls"
+      ],
+      "primary_actions": [
+        "Update price",
+        "Export aggregate report",
+        "View payout setup"
+      ],
+      "ux_notes": [
+        "Hide individual payer identity by default.",
+        "Institution mode should support monthly exports and cleaner finance-oriented layout."
+      ]
+    },
+    {
+      "route": "/join/[communityId]",
+      "name": "Join / Subscribe Page",
+      "goal": "Convert interested visitors into members with minimal friction.",
+      "audience": [
+        "member"
+      ],
+      "sections": [
+        "Community hero",
+        "What you get",
+        "Tier cards",
+        "Privacy explanation",
+        "FAQ",
+        "Sticky subscribe CTA"
+      ],
+      "primary_actions": [
+        "Connect wallet",
+        "Subscribe",
+        "Renew",
+        "Compare tiers"
+      ],
+      "ux_notes": [
+        "Do not force wallet connection before showing value proposition.",
+        "Make privacy benefit explicit near pricing.",
+        "Support renewal and expired membership recovery on the same page."
+      ]
+    },
+    {
+      "route": "/community/[communityId]",
+      "name": "Member Community Feed",
+      "goal": "Provide a clean home for gated content consumption and member participation.",
+      "audience": [
+        "member"
+      ],
+      "sections": [
+        "Community header",
+        "Feed tabs",
+        "Pinned resources",
+        "Latest gated content",
+        "Access status banner",
+        "Telegram sync card"
+      ],
+      "primary_actions": [
+        "Read post",
+        "Comment",
+        "Open library",
+        "Check membership status"
+      ],
+      "ux_notes": [
+        "Resemble a high-quality community feed, not a noisy social network.",
+        "Pinned 'How this community works' module should appear for new members.",
+        "If membership expired, replace feed with renewal state; do not tease inaccessible content excessively."
+      ]
+    },
+    {
+      "route": "/community/[communityId]/library",
+      "name": "Library / Classroom",
+      "goal": "Organize durable knowledge better than Skool for research and institutional use.",
+      "audience": [
+        "member",
+        "creator_alpha",
+        "research_institute"
+      ],
+      "sections": [
+        "Collections sidebar",
+        "Library search",
+        "Content tree",
+        "Document/lesson viewer",
+        "Attached files/resources",
+        "Access badge"
+      ],
+      "primary_actions": [
+        "Browse collection",
+        "Open resource",
+        "Download file",
+        "Continue reading"
+      ],
+      "ux_notes": [
+        "Support both course-style progression and research-library browsing.",
+        "Add metadata for type, freshness, author role, tier required, and estimated reading time."
+      ]
+    },
+    {
+      "route": "/community/[communityId]/events",
+      "name": "Events",
+      "goal": "Make calls, research briefings, and office hours discoverable without clutter.",
+      "audience": [
+        "member",
+        "creator_alpha",
+        "research_institute"
+      ],
+      "sections": [
+        "Upcoming events list",
+        "Calendar toggle",
+        "Past recordings",
+        "RSVP states",
+        "Permission label"
+      ],
+      "primary_actions": [
+        "RSVP",
+        "Add to calendar",
+        "Join event",
+        "Watch recording"
+      ],
+      "ux_notes": [
+        "Institution mode favors agenda, speaker, and materials over gamified visuals.",
+        "Show event access tier and whether recording will be available."
+      ]
+    },
+    {
+      "route": "/link",
+      "name": "Wallet ↔ Telegram Linking",
+      "goal": "Connect Telegram identity to wallet with maximum trust and minimum confusion.",
+      "audience": [
+        "member"
+      ],
+      "flow_steps": [
+        "Explain why linking is needed",
+        "Show generated secure challenge",
+        "Open Telegram instructions",
+        "Sign message",
+        "Verify success",
+        "Show next best action"
+      ],
+      "primary_actions": [
+        "Generate link code",
+        "Sign message",
+        "Open Telegram bot"
+      ],
+      "ux_notes": [
+        "Use a wizard with clear progress states.",
+        "Explain that signature proves ownership and does not move funds."
+      ]
+    }
+  ],
+  "special_modes": {
+    "institution_mode": {
+      "description": "A presentation and layout layer optimized for research institutes, DAOs, and analyst teams.",
+      "differences": [
+        "Less gamification prominence",
+        "Cleaner typography",
+        "More table and library views",
+        "Publishing metadata emphasized",
+        "Export/report affordances visible",
+        "Muted color accents"
+      ]
+    },
+    "creator_mode": {
+      "description": "Default mode for independent creators and paid communities.",
+      "differences": [
+        "More prominent growth prompts",
+        "Invite and conversion widgets",
+        "Simpler dashboard summaries",
+        "Faster content creation shortcuts"
+      ]
+    }
+  },
+  "key_user_flows": [
+    {
+      "name": "Creator launch flow",
+      "steps": [
+        "Visit landing page",
+        "Choose Create Community",
+        "Connect wallet",
+        "Complete guided setup wizard",
+        "Deploy contract",
+        "Reach success screen",
+        "Create first 3 posts",
+        "Copy invite link"
+      ]
+    },
+    {
+      "name": "Member subscribe flow",
+      "steps": [
+        "Land on join page",
+        "Review community and tiers",
+        "Connect wallet",
+        "Choose tier",
+        "Confirm transaction",
+        "See success state",
+        "Link Telegram",
+        "Open community feed"
+      ]
+    },
+    {
+      "name": "Renewal flow",
+      "steps": [
+        "Hit expired state on feed or join page",
+        "See membership expired banner",
+        "Click renew",
+        "Confirm transaction",
+        "Regain access immediately"
+      ]
+    },
+    {
+      "name": "Institution publishing flow",
+      "steps": [
+        "Open community workspace",
+        "Create research note",
+        "Assign required tier",
+        "Attach files",
+        "Publish to feed and library",
+        "Monitor aggregate access outcomes"
+      ]
+    }
+  ],
+  "design_tokens": {
+    "color_direction": {
+      "base": "charcoal / graphite / slate",
+      "accent": "electric blue or teal used sparingly",
+      "success": "emerald",
+      "warning": "amber",
+      "danger": "rose"
+    },
+    "radius": "16-24px cards, 12-16px inputs, 9999px pills",
+    "shadow_style": "soft layered shadow, low contrast",
+    "density": "comfortable, not crowded",
+    "typography": {
+      "heading": "strong geometric sans",
+      "body": "clean modern sans",
+      "data": "tabular numerals for stats"
+    }
+  },
+  "microcopy_guidelines": [
+    "Say 'private membership' before saying 'confidential token'.",
+    "Say 'verify access' before saying 'on-chain check'.",
+    "Say 'link Telegram securely' before saying 'EIP-712 signature'.",
+    "Avoid aggressive crypto slang in default UI.",
+    "For institutions, favor 'workspace', 'briefing', 'report', and 'access policy'."
+  ],
+  "anti_patterns": [
+    "Do not show public member avatar walls.",
+    "Do not expose wallet addresses in tables or activity feeds.",
+    "Do not overuse neon cyberpunk visuals.",
+    "Do not require wallet connection just to browse basic community information.",
+    "Do not mix creator actions and member actions on the same primary screen."
+  ],
+  "claude_code_handoff": {
+    "recommended_stack": [
+      "Next.js App Router",
+      "TypeScript",
+      "Tailwind CSS",
+      "shadcn/ui",
+      "framer-motion",
+      "wagmi + viem + RainbowKit",
+      "sqlite/prisma or drizzle for MVP backend",
+      "React Query or server actions for data flows"
+    ],
+    "deliverables": [
+      "Responsive app shell",
+      "All routes scaffolded",
+      "Stateful empty/loading/error/success screens",
+      "Accessible forms",
+      "Dark mode default",
+      "No fake personal member data in UI mocks"
+    ]
+  }
+}

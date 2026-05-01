@@ -1,0 +1,11 @@
+packages:
+  - 'packages/*'
+  - 'frontend'
+  - 'backend'
+  - 'contracts'
+allowBuilds:
+  better-sqlite3: true
+  bufferutil: true
+  utf-8-validate: true
+  keccak: true
+  secp256k1: true

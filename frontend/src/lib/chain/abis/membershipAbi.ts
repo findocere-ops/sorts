@@ -1,0 +1,72 @@
+export const membershipAbi = [
+  {
+    type: 'function',
+    name: 'subscribe',
+    stateMutability: 'payable',
+    inputs: [{ name: 'tier', type: 'uint8' }],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'renewSubscription',
+    stateMutability: 'payable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'checkAccess',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'checkTierAccess',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'requiredTier', type: 'uint8' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'getMemberExpiry',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'getRenewalPrice',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'getAggregateStats',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      { name: 'members', type: 'uint256' },
+      { name: 'revenue', type: 'uint256' },
+      { name: 'active', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'tierPrices',
+    stateMutability: 'view',
+    inputs: [{ name: 'tier', type: 'uint8' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'memberExpiry',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;

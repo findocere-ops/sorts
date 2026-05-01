@@ -1,0 +1,26 @@
+{
+  "name": "sorts",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "frontend",
+    "backend",
+    "contracts"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "frontend": "cd frontend && npm run dev",
+    "backend": "cd backend && npm run dev"
+  },
+  "devDependencies": {
+    "node-gyp": "^12.2.0",
+    "turbo": "^1.13.0",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
