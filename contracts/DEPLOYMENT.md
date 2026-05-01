@@ -1,61 +1,63 @@
-# SORTS Deployment Guide (Arbitrum Sepolia)
+# Beginner's Guide: Deploying SORTS to Arbitrum Sepolia
 
-This guide walks you through deploying the `SortsFactory` contract to the Arbitrum Sepolia testnet and securely wiring the deployed address into the SORTS frontend and backend.
+Welcome! You don't need to know how to code to do this. We just need to give the system a "burner wallet" (a temporary crypto wallet that only holds test money) so it can pay the fake fees required to deploy the contract to the Arbitrum Sepolia test network.
 
-## 1. Environment Setup
+Follow these steps exactly:
 
-You need to provide a burner wallet with some Arbitrum Sepolia ETH to pay for gas fees. **Never use your main mainnet wallet for testnet deployments.**
+## Step 1: Create a Burner Wallet
+If you don't have one, create a brand new wallet in MetaMask. **Do not use a wallet that holds real money.**
+1. Open your MetaMask extension.
+2. Go to Account Settings -> Account Details -> **Export Private Key**.
+3. Copy this long string of characters.
 
-1. Create a new file named `.env` inside the `contracts/` directory:
-   \`\`\`bash
-   touch contracts/.env
-   \`\`\`
-   *(Note: This file is already ignored by Git, so your secrets are safe).*
+## Step 2: Get Free Test Money
+Your burner wallet needs "Arbitrum Sepolia ETH" to pay for the deployment.
+1. Go to the [Alchemy Arbitrum Sepolia Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia) or [QuickNode Faucet](https://faucet.quicknode.com/arbitrum/sepolia).
+2. Paste your burner wallet's public address (starts with `0x`) and request funds.
 
-2. Open `contracts/.env` and add the following variables:
-   \`\`\`env
-   PRIVATE_KEY=your_burner_wallet_private_key_without_0x_prefix
-   ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-   \`\`\`
-   *(Optional)* If you want to verify the contract source code on Arbiscan automatically, you can also add:
-   \`\`\`env
-   ARBISCAN_API_KEY=your_arbiscan_api_key
-   \`\`\`
+## Step 3: Tell the System Your Keys
+We need to save your private key in a hidden file so the deploy script can use it. **This file is completely ignored by version control, so it will never be uploaded to GitHub.**
 
-3. Ensure the wallet associated with `PRIVATE_KEY` has Arbitrum Sepolia ETH. You can get testnet ETH from faucets like [Alchemy Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia) or [QuickNode Faucet](https://faucet.quicknode.com/arbitrum/sepolia).
+1. Inside your code editor, go into the `contracts` folder.
+2. Create a brand new file and name it exactly `.env` (don't forget the dot!).
+3. Paste the following text inside it:
 
-## 2. Deploy the Contract
+\`\`\`env
+PRIVATE_KEY=paste_your_private_key_here
+ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
+\`\`\`
+*(Replace `paste_your_private_key_here` with the private key you exported from MetaMask. Do not add quotes around it. If your key starts with `0x`, remove the `0x` part.)*
 
-Run the following command from the root of the SORTS repository:
+## Step 4: Run the Deploy Script
+Now that the system has a wallet with test money, run this exact command in your terminal at the bottom of your editor:
 
 \`\`\`bash
-pnpm --filter contracts compile
 pnpm --filter contracts deploy:sepolia
 \`\`\`
 
-If successful, the script will output the deployed **SortsFactory address** and save a detailed JSON file to `contracts/deployments/arbitrum-sepolia.json`.
+If it works, the terminal will print out a bunch of text, including something that says:
+`SortsFactory address: 0x...` (followed by a long string).
+**Copy that address!**
 
-## 3. Sync Environment Variables (Frontend & Backend)
+## Step 5: Connect the Frontend and Backend
+Now we need to tell the website where the contract lives.
 
-Once the contract is deployed, you **must** inform the frontend and backend about the new factory address so the MVP apps can interact with it.
-
-### Frontend
-Open or create `frontend/.env.local` and add/update the following:
+**1. Update the Frontend:**
+Open the file `frontend/.env.local` (create it if it doesn't exist) and add these lines:
 \`\`\`env
-NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=<Paste deployed SortsFactory address here>
+NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=paste_the_factory_address_here
 NEXT_PUBLIC_CHAIN_ID=421614
 NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
 \`\`\`
 
-### Backend
-Open or create `backend/.env` and add/update the following:
+**2. Update the Backend:**
+Open the file `backend/.env` (create it if it doesn't exist) and add these lines:
 \`\`\`env
-SORTS_FACTORY_ADDRESS=<Paste deployed SortsFactory address here>
+SORTS_FACTORY_ADDRESS=paste_the_factory_address_here
 ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
 \`\`\`
 
-## 4. Verify Frontend State
+*(Make sure you replace `paste_the_factory_address_here` with the actual address you copied in Step 4).*
 
-Once the environment variables are securely synced, ensure the frontend hot-reloads (or restart it with `pnpm dev`). 
-
-Navigate to `http://localhost:3000/studio/create` (or your active frontend URL). The "SortsFactory is not configured" error screen should disappear, and you should now see the Create Community wizard or the transaction-ready state.
+## You're done!
+Restart your app if it's running. When you go back to `http://localhost:3000/studio/create`, the "SortsFactory is not configured" message will be gone, and you can create your first community!
