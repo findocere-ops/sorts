@@ -1,6 +1,8 @@
-# SORTS USDC Deployment Flow
+# SORTS Legacy Arbitrum USDC Deployment Flow
 
-SORTS memberships on Arbitrum Sepolia are paid in USDC, not native ETH. Use a burner wallet and keep all secrets in local `.env` files only.
+This document covers the legacy/current Arbitrum Sepolia contract adapter. The active product launch focus is Solana devnet private subscription rails, described in `../Priority.md` and `../docs/COLOSSEUM_WINNER_SPEC.md`.
+
+Use this flow only when maintaining or testing the existing Hardhat/Arbitrum contracts. SORTS memberships on Arbitrum Sepolia are paid in USDC, not native ETH. Use a burner wallet and keep all secrets in local `.env` files only.
 
 ## 1. Prepare a Burner Wallet
 
@@ -57,6 +59,8 @@ pnpm --filter contracts deploy:sepolia
 
 The deployment writes the Arbitrum Sepolia deployment artifact and prints the new SortsFactory address.
 
+Reminder: this does not deploy the Solana Phase 2 MVP. Solana work belongs behind `SolanaService`, Umbra privacy services, and IKA wallet services.
+
 ## 6. Update App Environments
 
 After each redeploy, the old factory address is stale.
@@ -97,7 +101,7 @@ Then open:
 http://localhost:3000/studio/create
 ```
 
-The status page should show the factory as configured, Arbitrum Sepolia as the expected chain, and backend health if the frontend API URL is configured.
+The status page should show the legacy factory as configured, Arbitrum Sepolia as the expected EVM adapter chain, and backend health if the frontend API URL is configured.
 
 ## Safety Rules
 

@@ -1,20 +1,20 @@
 # SORTS Environment Setup
 
-This guide explains where every key goes and which values must stay private.
+This guide explains which local environment files SORTS uses and how to configure the Solana-first MVP safely.
 
-Important rule: never paste private keys, seed phrases, `.env` contents, or secret files into chat. Put them only in local `.env` files or hosting dashboards.
+Important rule: never paste private keys, seed phrases, `.env` contents, RPC URLs with API keys, or secret files into chat. Put real values only in local `.env` files or hosting dashboards.
 
-## The Three Env Files
+## Environment Files
 
-SORTS has three separate apps, so it has three separate env files.
+SORTS has three app workspaces:
 
-| App | Example file committed to Git | Real local file you create | Purpose |
-| --- | --- | --- | --- |
-| Frontend | `frontend/.env.example` | `frontend/.env.local` | Browser app, wallet login, API URL, public contract address |
-| Backend | `backend/.env.example` | `backend/.env` | Express API, chain reads, iExec/DataProtector |
-| Contracts | `contracts/.env.example` | `contracts/.env` | Hardhat contract deployment |
+| App | Example file committed to Git | Real local file | Purpose |
+|---|---|---|---|
+| Frontend | `frontend/.env.example` | `frontend/.env.local` | Browser app, Privy, API URL, public chain flags |
+| Backend | `backend/.env.example` | `backend/.env` | Express API, chain reads, wallet/privacy service config |
+| Contracts | `contracts/.env.example` | `contracts/.env` | Legacy Arbitrum/Hardhat deployment |
 
-To create the real local files:
+Create local files:
 
 ```bash
 cp frontend/.env.example frontend/.env.local
@@ -22,206 +22,205 @@ cp backend/.env.example backend/.env
 cp contracts/.env.example contracts/.env
 ```
 
-Then open each real file and fill in the blank values. Do not commit the real files.
+Do not commit the real files.
 
-## Frontend Variables
+## Solana-First MVP Variables
 
-Put these in `frontend/.env.local` locally and in Vercel for the hosted frontend.
+The current product direction is Solana devnet. Add these as the Solana implementation lands.
+
+### Frontend
 
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:3001
-NEXT_PUBLIC_CHAIN_ID=421614
-NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL=
-NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=
 NEXT_PUBLIC_PRIVY_APP_ID=
+NEXT_PUBLIC_DEFAULT_CHAIN=solana-devnet
+NEXT_PUBLIC_SOLANA_CLUSTER=devnet
+NEXT_PUBLIC_ENABLE_UMBRA=true
+NEXT_PUBLIC_ENABLE_UMBRA_MIXER=false
 ```
 
-What each one means:
+| Variable | Purpose | Public or secret? |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend API URL. | Public |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | Privy app ID. | Public |
+| `NEXT_PUBLIC_DEFAULT_CHAIN` | Default app chain context. | Public |
+| `NEXT_PUBLIC_SOLANA_CLUSTER` | Solana cluster label, usually `devnet` for MVP. | Public |
+| `NEXT_PUBLIC_ENABLE_UMBRA` | Enables Umbra UI paths. | Public |
+| `NEXT_PUBLIC_ENABLE_UMBRA_MIXER` | Enables mixer UI paths. Keep false for MVP unless explicitly testing. | Public |
 
-| Variable | What to put there | Public or secret? |
-| --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Local: `http://localhost:3001`. Hosted: your Render backend URL, such as `https://your-service.onrender.com`. | Public |
-| `NEXT_PUBLIC_CHAIN_ID` | `421614` for Arbitrum Sepolia. | Public |
-| `NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL` | Your Arbitrum Sepolia RPC URL. You can leave blank locally to use wallet/default behavior, but a real URL is better for hosted demos. | Public to browser, but do not commit if it contains a provider API key |
-| `NEXT_PUBLIC_SORTS_FACTORY_ADDRESS` | The deployed `SortsFactory` contract address after deployment. | Public |
-| `NEXT_PUBLIC_PRIVY_APP_ID` | Your Privy App ID from the Privy dashboard. | Public |
+Beginner note: `NEXT_PUBLIC_` values are visible in the browser. Never put a private key or secret token in them.
 
-Beginner note: `NEXT_PUBLIC_` means "this value is allowed to be visible in the browser." Never put a private key in a `NEXT_PUBLIC_` variable.
-
-## Backend Variables
-
-Put these in `backend/.env` locally and in Render for the hosted backend.
+### Backend
 
 ```bash
 PORT=3001
 FRONTEND_URL=http://localhost:3000
+DATABASE_PATH=./data/sorts.db
+
+PRIVY_APP_ID=
+PRIVY_APP_SECRET=
+
+SOLANA_RPC_URL=
+SOLANA_RPC_SUBSCRIPTIONS_URL=
+
+UMBRA_NETWORK=devnet
+UMBRA_INDEXER_API_ENDPOINT=
+UMBRA_RELAYER_API_ENDPOINT=
+UMBRA_PROGRAM_ID=
+UMBRA_ENABLE_MIXER=false
+UMBRA_ENABLE_COMPLIANCE=true
+UMBRA_ENABLE_SECURE_SEED_PERSISTENCE=false
+
+IKA_DWALLET_PROGRAM_ID=
+IKA_GRPC_URL=
+SORTS_DWALLET_PROGRAM_ID=
+IKA_PRE_ALPHA_MODE=true
+ENABLE_IKA_REAL_FUNDS=false
+
+ENABLE_SOLANA_PHASE2=true
+ENABLE_UMBRA_ENCRYPTED_BALANCES=true
+ENABLE_REAL_FHE=false
+ENABLE_REAL_MPC_SIGNING=false
+```
+
+| Variable | Purpose | Public or secret? |
+|---|---|---|
+| `PORT` | Local backend port. | Public |
+| `FRONTEND_URL` | Allowed frontend origin. | Public |
+| `DATABASE_PATH` | SQLite database path. | Local config |
+| `PRIVY_APP_ID` | Backend Privy app reference. | Secret-ish |
+| `PRIVY_APP_SECRET` | Privy server secret. | Secret |
+| `SOLANA_RPC_URL` | Server-side Solana RPC endpoint. | Secret-ish if API-keyed |
+| `SOLANA_RPC_SUBSCRIPTIONS_URL` | Server-side Solana websocket/subscription endpoint. | Secret-ish if API-keyed |
+| `UMBRA_*` | Umbra devnet service configuration. | Treat URLs as secret-ish if API-keyed |
+| `IKA_*` | IKA pre-alpha dWallet configuration. | Treat service URLs as secret-ish if API-keyed |
+| `ENABLE_REAL_FHE` | Must stay false until real FHE is verified. | Public flag |
+| `ENABLE_REAL_MPC_SIGNING` | Must stay false until real MPC is verified. | Public flag |
+
+## Privy Setup
+
+Privy powers account auth, embedded wallets, external wallet connections, and wallet transaction prompts.
+
+1. Open the Privy dashboard.
+2. Create or select the SORTS app.
+3. Enable the login methods needed for the demo.
+4. Enable Solana wallet support if available in your Privy configuration.
+5. Copy the public app ID to `frontend/.env.local`.
+6. Put backend Privy secrets only in `backend/.env` or hosting secrets.
+
+Privy is not the privacy protocol. Do not describe Privy as hiding balances, tiers, or content.
+
+## Solana Devnet Setup
+
+For the 10-day MVP:
+
+- Use Solana devnet.
+- Use a devnet wallet with no real funds.
+- Keep mainnet disabled.
+- Keep IKA real-funds paths disabled.
+- Make devnet/pre-alpha labels visible in the UI.
+
+Add Solana RPC values only to local env files or hosting dashboards. Do not commit provider URLs if they contain API keys.
+
+## Umbra Setup
+
+Umbra is the planned Solana hidden membership-state layer.
+
+Use Umbra for:
+
+- registration status,
+- hidden/encrypted balance membership state,
+- private entitlement checks,
+- optional user-initiated compliance grants.
+
+Do not use Umbra as:
+
+- a full Nox-equivalent confidential smart-contract runtime,
+- direct content encryption,
+- a reason to expose raw hidden balances in APIs.
+
+Keep `UMBRA_ENABLE_MIXER=false` for the MVP unless the base demo is stable and mixer/UTXO flow is explicitly tested.
+
+Master seed handling is sensitive. Do not log seeds, persist them casually, or alter the derivation message.
+
+## IKA dWallet Setup
+
+IKA is the planned programmable multichain signing/capability layer.
+
+Use IKA for:
+
+- dWallet status,
+- capability display,
+- future MessageApproval lifecycle,
+- future program-controlled signing flows.
+
+For the MVP:
+
+- keep `IKA_PRE_ALPHA_MODE=true`,
+- keep `ENABLE_IKA_REAL_FUNDS=false`,
+- label IKA as pre-alpha in UI/docs,
+- do not claim production MPC.
+
+## Legacy Arbitrum Adapter Variables
+
+The repo still contains Arbitrum Sepolia/Hardhat work. Keep this working, but treat it as adapter/reference work instead of the primary Solana launch path.
+
+Frontend legacy values:
+
+```bash
+NEXT_PUBLIC_CHAIN_ID=421614
+NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL=
+NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=
+```
+
+Backend legacy values:
+
+```bash
 ARBITRUM_SEPOLIA_RPC_URL=
 SORTS_FACTORY_ADDRESS=
 IEXEC_PRIVATE_KEY=
 IEXEC_SORTS_IAPP_ADDRESS=
 ```
 
-What each one means:
-
-| Variable | What to put there | Public or secret? |
-| --- | --- | --- |
-| `PORT` | Local backend port. Use `3001` locally. On Render, Render may provide its own port. | Public |
-| `FRONTEND_URL` | Local: `http://localhost:3000`. Hosted: your Vercel frontend URL. | Public |
-| `ARBITRUM_SEPOLIA_RPC_URL` | Server-side Arbitrum Sepolia RPC URL. | Secret-ish if it contains an API key. Do not commit. |
-| `SORTS_FACTORY_ADDRESS` | The deployed `SortsFactory` contract address. | Public |
-| `IEXEC_PRIVATE_KEY` | Backend operator wallet private key for iExec/DataProtector actions. | Secret. Never commit. |
-| `IEXEC_SORTS_IAPP_ADDRESS` | Address of the iExec app authorized to process protected SORTS content. | Public address, but still keep it in env for easy configuration. |
-
-The backend can also use other optional values later, such as `TELEGRAM_BOT_TOKEN` and `DATABASE_PATH`. The minimal MVP environment above is focused on the requested web and iExec setup.
-
-## Contracts Variables
-
-Put these in `contracts/.env` locally. You usually do not put these in Vercel or Render.
+Contracts legacy values:
 
 ```bash
 PRIVATE_KEY=
 ARBITRUM_SEPOLIA_RPC_URL=
 ARBISCAN_API_KEY=
+USDC_ADDRESS=
 ```
 
-What each one means:
-
-| Variable | What to put there | Public or secret? |
-| --- | --- | --- |
-| `PRIVATE_KEY` | Private key for the burner deployer wallet that deploys contracts. | Secret. Never commit. |
-| `ARBITRUM_SEPOLIA_RPC_URL` | Arbitrum Sepolia RPC URL used by Hardhat. | Secret-ish if it contains an API key. Do not commit. |
-| `ARBISCAN_API_KEY` | Arbiscan API key for contract verification. | Secret-ish. Do not commit. |
-
-## Create A Burner MetaMask Wallet
-
-A burner wallet is a wallet used only for testing and deploying testnet contracts. It should not hold real money.
-
-Recommended safest beginner approach:
-
-1. Install MetaMask only from the official MetaMask site or official browser extension store. MetaMask's help center warns not to download it from random sites: [MetaMask getting started](https://support.metamask.io/start/getting-started-with-metamask/).
-2. Use a separate browser profile just for SORTS testing.
-3. Create a brand-new MetaMask wallet in that profile.
-4. Save the Secret Recovery Phrase somewhere safe and offline.
-5. Do not reuse your main wallet.
-6. Do not put real ETH or valuable assets in this wallet.
-7. Export the private key only for the test deployer account, then paste it into `contracts/.env` as `PRIVATE_KEY=...`.
-
-MetaMask also supports adding extra accounts inside an existing wallet, but for a true burner setup, a separate browser profile and separate wallet is cleaner. MetaMask's account guide is here: [How to add accounts in MetaMask](https://support.metamask.io/configure/accounts/how-to-add-accounts-in-your-wallet/).
-
-## Get Arbitrum Sepolia Test ETH
-
-You need Arbitrum Sepolia test ETH to pay testnet gas. It has no real-money value, but it is required for transactions.
-
-Options:
-
-- Use an Arbitrum Sepolia faucet, such as [Alchemy's Arbitrum Sepolia faucet](https://www.alchemy.com/faucets/arbitrum-sepolia) or [ETHGlobal's Arbitrum Sepolia faucet](https://ethglobal.com/faucet/arbitrum-sepolia-421614).
-- If you have Ethereum Sepolia ETH, bridge it to Arbitrum Sepolia with the [official Arbitrum bridge](https://bridge.arbitrum.io/).
-
-Send the test ETH to your burner deployer wallet address.
-
-## Get An Arbitrum Sepolia RPC URL
-
-An RPC URL is the endpoint your app uses to talk to the blockchain.
-
-Options:
-
-- Create a free Alchemy app for Arbitrum Sepolia. Alchemy lists the format as `https://arb-sepolia.g.alchemy.com/v2/<api-key>` on its [Arbitrum Sepolia RPC page](https://www.alchemy.com/rpc/arbitrum-sepolia).
-- Create a QuickNode Arbitrum Sepolia endpoint. QuickNode lists Arbitrum Sepolia as chain ID `421614` in its [Arbitrum docs](https://www.quicknode.com/docs/arbitrum/api-overview).
-- For local experiments, the code falls back to the public RPC `https://sepolia-rollup.arbitrum.io/rpc`, but a provider URL is more reliable for demos.
-
-Put the RPC URL in:
-
-- `frontend/.env.local` as `NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL=...`
-- `backend/.env` as `ARBITRUM_SEPOLIA_RPC_URL=...`
-- `contracts/.env` as `ARBITRUM_SEPOLIA_RPC_URL=...`
-
-## Get A Privy App ID
-
-Privy powers login, embedded wallets, wallet signatures, and wallet transactions.
-
-Steps:
-
-1. Go to the [Privy dashboard](https://dashboard.privy.io/).
-2. Create a new Privy app. Privy's docs cover this flow here: [Create a Privy app](https://docs.privy.io/basics/get-started/dashboard/create-new-app).
-3. Copy the App ID.
-4. Put it in `frontend/.env.local` as `NEXT_PUBLIC_PRIVY_APP_ID=...`.
-5. Add the same value to Vercel for the frontend deployment.
-
-The Privy App ID is public. It is okay that browser code can see it. It is still better not to hardcode it in source files.
-
-## Add Env Vars In Vercel
-
-Use Vercel for the frontend.
-
-Steps:
-
-1. Open your project in the [Vercel dashboard](https://vercel.com/dashboard).
-2. Go to the project.
-3. Click `Settings`.
-4. Click `Environment Variables`.
-5. Add every variable from `frontend/.env.example`.
-6. Use your Render backend URL for `NEXT_PUBLIC_API_URL` after the backend is deployed.
-7. Redeploy after changing env vars.
-
-Vercel's docs say project environment variables are configured in Project Settings: [Vercel environment variables](https://vercel.com/docs/projects/environment-variables).
-
-## Add Env Vars In Render
-
-Use Render for the backend.
-
-Steps:
-
-1. Open your service in the [Render dashboard](https://dashboard.render.com/).
-2. Click your backend service.
-3. Click `Environment` in the left menu.
-4. Under `Environment Variables`, click `Add Environment Variable`.
-5. Add every variable from `backend/.env.example`.
-6. Save and redeploy.
-
-Render's docs describe this flow here: [Render environment variables and secrets](https://render.com/docs/configure-environment-variables).
-
-## What iExec Keys Are For
-
-SORTS can publish normal gated content first. iExec/DataProtector is for stronger protected content later.
-
-In plain language:
-
-- `IEXEC_PRIVATE_KEY` lets the backend operator perform iExec/DataProtector actions.
-- `IEXEC_SORTS_IAPP_ADDRESS` identifies the iExec app allowed to process protected content.
-- These are used when posts are protected with DataProtector instead of stored as plain backend content.
-
-For the first web MVP, you can leave iExec values blank if you are not testing DataProtector-protected posts yet. Do not enable protected-post flows until these values are configured.
-
-iExec DataProtector docs are here: [iExec DataProtector](https://docs.iex.ec/tools/dataProtector/dataProtectorCore/getProtectedData).
+Only use these when working on the existing Arbitrum adapter, USDC contracts, or iExec/DataProtector experiments.
 
 ## Public vs Secret Values
 
 Public values:
 
 - `NEXT_PUBLIC_API_URL`
-- `NEXT_PUBLIC_CHAIN_ID`
-- `NEXT_PUBLIC_SORTS_FACTORY_ADDRESS`
 - `NEXT_PUBLIC_PRIVY_APP_ID`
-- `PORT`
-- `FRONTEND_URL`
-- `SORTS_FACTORY_ADDRESS`
-- `IEXEC_SORTS_IAPP_ADDRESS`
+- `NEXT_PUBLIC_DEFAULT_CHAIN`
+- `NEXT_PUBLIC_SOLANA_CLUSTER`
+- feature flags exposed to the browser
+- public program or contract addresses
 
 Secret values:
 
-- `PRIVATE_KEY`
-- `IEXEC_PRIVATE_KEY`
-- Seed phrases and Secret Recovery Phrases
-- Any `.env` file containing real values
-- Any secret file containing keys
+- private keys,
+- seed phrases,
+- Secret Recovery Phrases,
+- `PRIVY_APP_SECRET`,
+- IKA/Umbra credentials if any are issued,
+- any `.env` file containing real values.
 
 Secret-ish values:
 
-- `ARBITRUM_SEPOLIA_RPC_URL`
-- `NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL`
-- `ARBISCAN_API_KEY`
+- RPC URLs with provider API keys,
+- indexer URLs with API keys,
+- relayer URLs with API keys,
+- explorer API keys.
 
-Secret-ish means the value might not move funds by itself, but it can expose paid provider usage, rate limits, analytics, or account quotas. Do not commit these values.
+Secret-ish values might not move funds by themselves, but they can expose provider usage, quotas, or account analytics. Do not commit them.
 
 ## Never Commit These
 
@@ -230,29 +229,33 @@ Never commit:
 - `frontend/.env.local`
 - `backend/.env`
 - `contracts/.env`
-- Any `.env` or `.env.*` file with real values
-- Private keys
-- Seed phrases
+- any `.env` or `.env.*` file with real values
+- private keys
+- seed phrases
 - Secret Recovery Phrases
-- iExec private keys
-- Arbiscan API keys
-- RPC URLs that contain provider API keys
-- Files in `secrets/`
-- Files ending in `.key`, `.pem`, `.p12`, `.pfx`, or `.secret`
-
-The repo `.gitignore` is configured to ignore these secret files while allowing `.env.example` files to be committed.
+- Privy secrets
+- provider RPC URLs with API keys
+- files in `secrets/`
+- files ending in `.key`, `.pem`, `.p12`, `.pfx`, or `.secret`
 
 ## Quick Local Checklist
 
 1. Create `frontend/.env.local` from `frontend/.env.example`.
 2. Create `backend/.env` from `backend/.env.example`.
-3. Create `contracts/.env` from `contracts/.env.example`.
-4. Create a burner MetaMask wallet.
-5. Fund it with Arbitrum Sepolia test ETH.
-6. Add the burner private key only to `contracts/.env`.
-7. Add your RPC URL to all three env files.
-8. Add your Privy App ID to `frontend/.env.local`.
-9. Deploy contracts.
-10. Put the deployed `SortsFactory` address in frontend and backend env files.
+3. Create `contracts/.env` from `contracts/.env.example` only if working on legacy contracts.
+4. Add Privy app values.
+5. Add Solana devnet RPC values.
+6. Add Umbra devnet values when implementing Umbra flows.
+7. Add IKA pre-alpha values when implementing IKA flows.
+8. Keep real-funds and real-MPC flags disabled.
+9. Run `pnpm dev`.
+10. Verify no real env file is staged before committing.
 
-After that, the app can be tested without exposing secrets in Git.
+## Verification Commands
+
+```bash
+pnpm --filter contracts compile
+pnpm --filter contracts test
+pnpm --filter @sorts/backend build
+pnpm --filter @sorts/frontend build
+```

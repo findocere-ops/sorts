@@ -1,145 +1,155 @@
-# SORTS — Privacy-First Community Platform
+# SORTS - Private Subscription Rails on Solana
 
-**iExec Vibe Coding Challenge 2026 submission**
+SORTS is a Solana-first platform for private paid communities. It helps creators sell recurring access to gated content, Telegram/web spaces, and premium community workflows while keeping subscriber identity and membership state non-leaky.
 
-SORTS lets creators deploy private membership communities on Arbitrum Sepolia. Subscribers get gated content through a web app and Telegram bot. Phase 1 uses ERC-7984-shaped membership commitments for on-chain tiers and iExec DataProtector for protected content.
+The current launch target is a Solana devnet MVP for Colosseum/Superteam: Privy for account and wallet orchestration, Umbra Privacy SDK for hidden membership-state experiments, IKA dWallet for programmable multichain wallet capability display, and aggregate-only creator analytics.
 
----
+## Product Positioning
 
-## What makes SORTS different
+SORTS is not just "Skool on-chain." The wedge is private subscription rails for paid communities.
 
-| Platform | Creator sees member list | Creator sees tier breakdown | Creator sees wallet addresses |
-|---|---|---|---|
-| Substack, Patreon, etc. | ✓ | ✓ | ✓ |
-| **SORTS** | ✗ | ✗ | ✗ |
+Creators get:
 
-Membership tiers are encoded as keccak256 commitments on-chain through an ERC-7984-shaped interface. Access checks return pass/fail only, and the public API never returns post bodies until wallet proof and on-chain tier checks pass.
+- Solana community creation and subscription setup.
+- Creator-selected free-preview content.
+- Aggregate revenue and active-member stats.
+- Telegram/web gated-access workflows.
+- No public subscriber wallet list.
 
----
+Subscribers get:
+
+- Privy-powered login and wallet UX.
+- Solana wallet transaction confirmation before payment.
+- A two-community preview quota before joining.
+- Gated content unlocks through non-leaky membership checks.
+- No public member graph exposed by the app.
+
+## Privacy Rules
+
+SORTS must preserve these invariants:
+
+- No public member list.
+- No enumerable member registry.
+- Creator dashboards show aggregate stats only.
+- APIs must not return raw hidden balances, raw private tier encodings, or subscriber wallet lists.
+- Experimental privacy layers must be labeled honestly.
+
+Umbra and IKA are treated carefully:
+
+- Umbra is used for Solana hidden membership-state experiments and encrypted-balance-style entitlement checks.
+- IKA dWallet is used for programmable signing/capability display and must be labeled pre-alpha where appropriate.
+- SORTS must not claim production FHE, production MPC, or full Nox parity unless those systems are actually implemented and verified.
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────┐
-│  Next.js 14 frontend (Privy + wagmi + viem)           │
-│  ↕ wagmi write  ↕ REST API                            │
-├──────────────┬───────────────────────────────────────┤
-│ Arbitrum     │  Express backend + grammy Telegram bot │
-│ Sepolia      │  SQLite metadata + iExec protected data │
-│ SortsFactory │                                        │
-│ SortsMembership (ERC-7984, per community)             │
-└──────────────────────────────────────────────────────┘
+```text
+SORTS/
+├── frontend/           Next.js 14 app, creator studio, member/join flows
+├── backend/            Express API, SQLite, Telegram bot, chain adapters
+├── contracts/          Legacy/adapter EVM contracts and Arbitrum USDC work
+├── packages/shared/    Chain, wallet, content, and membership interfaces
+├── docs/               Colosseum, grant, and launch planning docs
+└── Priority.md         10-day Solana launch plan
 ```
 
-**Chain Adapter Pattern** — all blockchain calls go through `IChainService`. Phase 2 can add a `SolanaService` without changing feature services.
+The architecture is adapter-first. Feature modules should call shared interfaces and project services, not raw chain SDKs.
 
-**Privacy boundary:** Phase 1 is an Arbitrum Sepolia membership contract plus iExec DataProtector protected content. Do not describe it as a full NOX confidential-token deployment until a true NOX/confidential pointer implementation is wired in.
+Key planned Solana services:
 
----
+- `SolanaService`: implements community, subscription, access-check, and aggregate-stat behavior behind `IChainService`.
+- `UmbraPrivacyService`: owns Umbra client setup, registration checks, hidden membership-state checks, and encrypted-balance workflows.
+- `IkaDWalletService`: owns IKA dWallet status, capability display, and future MessageApproval lifecycle support.
+- `PrivyService`: owns authenticated user identity and wallet metadata.
 
-## Revenue model
+The existing Arbitrum contracts and USDC migration work remain useful as adapter history and implementation reference, but the current product and demo focus is Solana devnet.
 
-| Layer | Mechanism | Margin |
-|---|---|---|
-| Protocol fee | 5% of every subscription, collected on-chain | ~99% (gas < $0.01) |
-| Platform plans | Free / Builder ($49) / Scale ($149) / Enterprise | >80% |
+## Current Demo Goal
 
-Combined projected margin: **>50%** from first paying customer.
+The demo should prove one clean path:
 
----
+1. Creator creates a Solana private subscription community.
+2. Creator marks preview content.
+3. Subscriber signs in with Privy.
+4. Subscriber chooses a Solana wallet context.
+5. Subscriber previews up to two communities.
+6. Subscriber joins with wallet transaction confirmation.
+7. App checks hidden/non-leaky membership state.
+8. Gated content unlocks.
+9. Creator sees aggregate stats, not a member wallet list.
+10. IKA dWallet capability appears with pre-alpha warnings.
 
-## Deployed contracts (Arbitrum Sepolia)
+## Quick Start
 
-| Contract | Address |
-|---|---|
-| SortsFactory | `TBD — run pnpm deploy:sepolia` |
-| Demo: Alpha Traders | `TBD` |
+Prerequisites:
 
----
-
-## Quick start
-
-### Prerequisites
 - Node.js 20+
 - pnpm 9+
-- A wallet funded with Arbitrum Sepolia ETH
+- Local `.env` files created from examples
+- Solana devnet wallet context for Phase 2 work
 
 ```bash
 git clone <repo>
 cd SORTS
 pnpm install
 
-# Copy and fill environment files
 cp frontend/.env.example frontend/.env.local
 cp backend/.env.example backend/.env
 cp contracts/.env.example contracts/.env
 
-# Deploy contracts
-cd contracts
-pnpm compile
-pnpm deploy:sepolia        # writes to deployments/arbitrum-sepolia.json
-
-# Run dev servers
-cd ..
-pnpm dev                   # starts frontend (:3000) + backend (:3001)
+pnpm dev
 ```
 
-### Environment variables
+Useful checks:
 
-**frontend/.env.local**
-```
-NEXT_PUBLIC_PRIVY_APP_ID=clxxxxxxxxxxxxxxxx   # From privy.io dashboard
-NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=0x...
-NEXT_PUBLIC_API_URL=http://localhost:3001
-```
-
-**backend/.env**
-```
-TELEGRAM_BOT_TOKEN=...                        # From @BotFather
-DATABASE_PATH=./data/sorts.db
-FRONTEND_URL=http://localhost:3000
-PORT=3001
-SORTS_FACTORY_ADDRESS=0x...
-ARBITRUM_SEPOLIA_RPC=https://sepolia-rollup.arbitrum.io/rpc
-IEXEC_PRIVATE_KEY=0x...                       # Used by DataProtector; can differ from deployer
-IEXEC_SORTS_IAPP_ADDRESS=0x...                # iExec app that processes protected content
+```bash
+pnpm --filter contracts compile
+pnpm --filter contracts test
+pnpm --filter @sorts/backend build
+pnpm --filter @sorts/frontend build
 ```
 
-**contracts/.env**
-```
-PRIVATE_KEY=0x...
-ARBITRUM_SEPOLIA_RPC=https://sepolia-rollup.arbitrum.io/rpc
-```
+## Environment Notes
 
----
+Real `.env` files are local only and must never be committed.
 
-## Flows
+Solana Phase 2 variables should be added to env examples as implementation lands. Expected categories:
 
-### Creator flow
-1. Connect wallet → `/create` → fill name/symbol/tiers → deploy via SortsFactory
-2. Manage content at `/dashboard/:communityId`; protected posts require iExec env vars
-3. Share `/join/:communityId` link
+- Solana devnet RPC and subscriptions endpoints.
+- Privy app configuration.
+- Umbra network/indexer/relayer configuration.
+- IKA dWallet pre-alpha configuration.
+- Feature flags for Umbra, IKA, mixer, compliance, real FHE, and real MPC.
 
-### Member flow
-1. Discover at `/discover` → `/join/:communityId` → select tier → subscribe (on-chain payment)
-2. Access gated feed at `/community/:communityId`; post bodies require wallet signature and on-chain tier verification
-3. Link Telegram via `/link?code=...&tg=...` → receive posts in DM
+Legacy Arbitrum variables still exist for the current EVM adapter and contract work, but they are not the main launch path.
 
----
+## Key Docs
 
-## Tech stack
+- [Priority.md](./Priority.md): 10-day Solana Phase 2 launch plan.
+- [Colosseum Winner Spec](./docs/COLOSSEUM_WINNER_SPEC.md): judge-facing Solana private subscription rails spec.
+- [Superteam Grant Draft](./docs/SUPERTEAM_AGENTIC_ENGINEERING_GRANT.md): Agentic Engineering Grant application draft.
+- [Environment Setup](./ENVIRONMENT_SETUP.md): local env guidance and secret-safety rules.
+- [Contracts Deployment](./contracts/DEPLOYMENT.md): legacy Arbitrum USDC deployment notes.
 
-| Layer | Choice |
+## Tech Stack
+
+| Layer | Current / Target |
 |---|---|
-| Smart contracts | Solidity 0.8.24, Hardhat |
-| Blockchain | Arbitrum Sepolia (Phase 1) |
-| Token standard | ERC-7984-shaped commitment interface |
-| Content privacy | iExec DataProtector |
-| Frontend | Next.js 14, Tailwind CSS, Privy, wagmi, viem |
-| Backend | Express, grammy, better-sqlite3, ts-node |
-| Monorepo | Turborepo, pnpm workspaces |
+| Product chain focus | Solana devnet |
+| Wallet/auth | Privy |
+| Solana privacy | Umbra Privacy SDK |
+| Programmable wallet | IKA dWallet |
+| Frontend | Next.js 14, Tailwind CSS |
+| Backend | Express, grammy, SQLite |
+| Shared architecture | Chain Adapter Pattern |
+| Legacy contracts | Solidity, Hardhat, Arbitrum Sepolia USDC |
 
----
+## Safety
+
+- Do not commit `.env` files.
+- Do not print secrets or RPC URLs with API keys.
+- Do not add member enumeration.
+- Do not claim production-grade privacy before implementation proves it.
+- Do not let Solana-specific SDK calls leak into generic product modules.
 
 ## License
 

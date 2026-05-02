@@ -53,7 +53,7 @@ function HeroSection() {
           }}
         >
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }} />
-          v1.0 Live on Arbitrum Sepolia
+          Solana devnet launch sprint
         </div>
 
         {/* Headline */}
@@ -67,8 +67,8 @@ function HeroSection() {
           id="hero-subheadline"
           style={{ fontSize: 17, color: 'var(--text-2)', maxWidth: 600, margin: '0 auto 36px', lineHeight: 1.65 }}
         >
-          Memberships, tier access, and gated content secured by cryptographic infrastructure.
-          No public subscriber list. No leaked membership graph. Privacy is the architecture.
+          Private subscription rails for paid communities on Solana.
+          No public subscriber list. No leaked membership graph. Creator analytics stay aggregate-only.
         </p>
 
         {/* CTAs */}
@@ -91,9 +91,9 @@ function HeroSection() {
         {/* Trust row */}
         <div style={{ display: 'flex', gap: 24, justifyContent: 'center', flexWrap: 'wrap', fontSize: 12, color: 'var(--text-3)' }}>
           {[
-            'ERC-7984 confidential tokens',
-            'iExec NOX TEE',
-            'Privy embedded wallets',
+            'Solana private subscriptions',
+            'Umbra hidden membership state',
+            'Privy wallet orchestration',
           ].map((label) => (
             <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Icon name="check" size={14} color="var(--success)" /> {label}
@@ -123,7 +123,7 @@ function CommunityPreviewCard() {
         </div>
         <div>
           <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', marginBottom: 2 }}>Alpha Signals</p>
-          <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Arbitrum Sepolia · ERC-7984</p>
+          <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Solana devnet · private subscription rails</p>
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <PrivacyBadge />
@@ -135,7 +135,7 @@ function CommunityPreviewCard() {
         {[
           { label: 'Total members', value: '1,247', sub: 'aggregate only' },
           { label: 'Active ratio', value: '89%', sub: 'no individual data' },
-          { label: 'Revenue (ETH)', value: '18.42', sub: 'total collected' },
+          { label: 'Revenue (USDC)', value: '18.42', sub: 'total collected' },
         ].map(({ label, value, sub }) => (
           <div key={label} style={{ background: 'rgba(12,19,26,0.8)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '12px 14px' }}>
             <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>{label}</p>
@@ -159,11 +159,11 @@ function CommunityPreviewCard() {
 /* ── Trust strip ─────────────────────────────────────────────────────────────── */
 function TrustStrip() {
   const items = [
-    { label: 'iExec NOX Protocol', icon: 'shield' as const },
-    { label: 'ERC-7984 Confidential Tokens', icon: 'lock' as const },
-    { label: 'Arbitrum Sepolia', icon: 'bolt' as const },
-    { label: 'Commitment-based privacy', icon: 'eye_off' as const },
-    { label: 'Telegram bot verification', icon: 'bot' as const },
+    { label: 'Solana devnet', icon: 'bolt' as const },
+    { label: 'Umbra hidden state', icon: 'shield' as const },
+    { label: 'IKA dWallet capability', icon: 'lock' as const },
+    { label: 'Aggregate-only analytics', icon: 'eye_off' as const },
+    { label: 'Telegram access rail', icon: 'bot' as const },
   ];
 
   return (
@@ -195,8 +195,8 @@ function ProblemSection() {
       s: 'Anyone can scrape who joined what. Competitors map your member base in real-time.',
     },
     {
-      t: 'Tier ownership is observable',
-      s: 'Onchain platforms expose tier NFTs, leaking who paid premium prices.',
+      t: 'Subscriber payments are linkable',
+      s: 'Public payment rails can reveal who joined which paid community and when.',
     },
     {
       t: 'Content access never expires',
@@ -209,7 +209,7 @@ function ProblemSection() {
       <div className="section-eyebrow">The problem</div>
       <h2 className="section-title">Community platforms leak the one thing that matters most.</h2>
       <p className="section-sub mb-8">
-        Skool, Discord, Telegram — every platform exposes who's a member, what tier they pay for, and what private content they access.
+        Skool, Discord, Telegram, and token-gated groups expose who's a member, what they pay for, and what private content they access.
         For alpha groups, research DAOs, and institutions, that's a critical leak.
       </p>
       <div className="g3 mt-6">
@@ -230,10 +230,10 @@ function ProblemSection() {
 /* ── Privacy protocol ────────────────────────────────────────────────────────── */
 function PrivacyProtocol() {
   const features = [
-    { ic: 'shield', t: 'Encrypted memberships', s: 'Membership tokens are confidential by default. No enumerate-members function exists.' },
-    { ic: 'lock', t: 'Tier ownership hidden', s: 'Even the creator cannot see which subscriber paid for which tier.' },
-    { ic: 'eye_off', t: 'No subscriber list', s: 'Aggregate counts only. The member graph is not stored anywhere queryable.' },
-    { ic: 'bolt', t: 'Anti-piracy access', s: 'Content access tokens expire and re-verify on every fetch.' },
+    { ic: 'shield', t: 'Hidden membership state', s: 'Solana membership access is designed around non-leaky entitlement checks, not public member lists.' },
+    { ic: 'lock', t: 'Creator-blind analytics', s: 'Creators see aggregate revenue and active counts, not subscriber wallets or raw private tier state.' },
+    { ic: 'eye_off', t: 'No subscriber list', s: 'The product never exposes an enumerable member registry through app or API surfaces.' },
+    { ic: 'bolt', t: 'Revocable access', s: 'Gated content is checked at access time so expired memberships can be locked again.' },
     { ic: 'book', t: 'Classrooms & courses', s: 'Multi-lesson modules with tier gating and completion tracking.' },
     { ic: 'bot', t: 'Telegram protocol bridge', s: 'Verify membership in Telegram without exposing identity.' },
   ] as const;
@@ -243,7 +243,7 @@ function PrivacyProtocol() {
       <div className="section-eyebrow">The protocol</div>
       <h2 className="section-title">Privacy is enforced at the protocol layer, not as a UI toggle.</h2>
       <p className="section-sub mb-8">
-        SORTS combines confidential tokens, TEE-backed compute, and aggregate-only analytics so creator-blindness is mathematically guaranteed.
+        SORTS combines Solana adapter services, Umbra hidden membership-state experiments, and aggregate-only analytics to make privacy the default product posture.
       </p>
       <div className="g3 mt-6">
         {features.map((x) => (
@@ -273,9 +273,9 @@ function RoleSplit() {
             <Icon name="crown" size={12} /> Creator Studio
           </div>
           <div className="t-h1 mb-3">Run a confidential community.</div>
-          <p className="t-body text-muted mb-5">Deploy tiers, gate content, monetize members, and track aggregate performance — without ever seeing individual subscriber data.</p>
+          <p className="t-body text-muted mb-5">Launch subscription rails, gate content, monetize members, and track aggregate performance without exposing individual subscriber data.</p>
           <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-            {['Multi-tier monetization', 'Classroom & calendar builder', 'Aggregate-only analytics', 'Telegram bot integration', 'On-chain deploy in one flow'].map((s, i) => (
+            {['Solana USDC subscription rails', 'Preview content controls', 'Aggregate-only analytics', 'Telegram access rail', 'Private membership-state checks'].map((s, i) => (
               <li key={i} style={{ display: 'flex', gap: 10, fontSize: 13.5 }}>
                 <Icon name="check" size={16} color="var(--orange)" /> {s}
               </li>
@@ -294,9 +294,9 @@ function RoleSplit() {
             <Icon name="user" size={12} /> Member App
           </div>
           <div className="t-h1 mb-3">Join without exposing yourself.</div>
-          <p className="t-body text-muted mb-5">Subscribe, consume gated content, take courses, attend events, earn points — all under encrypted membership.</p>
+          <p className="t-body text-muted mb-5">Subscribe, consume gated content, preview communities, attend events, and keep your membership graph out of public app surfaces.</p>
           <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-            {['Gated feed, library, classroom', 'RSVP private events', 'Pseudonymous leaderboard', 'Telegram access bridge', 'No public membership trace'].map((s, i) => (
+            {['Gated feed, library, classroom', 'Two-community preview quota', 'Wallet-confirmed Solana join', 'Telegram access bridge', 'No public member list'].map((s, i) => (
               <li key={i} style={{ display: 'flex', gap: 10, fontSize: 13.5 }}>
                 <Icon name="check" size={16} color="var(--cyan)" /> {s}
               </li>
@@ -322,9 +322,9 @@ function PrivacyArchitecture() {
       <div className="card mt-6" style={{ padding: 32 }}>
         <div className="g3" style={{ gap: 28 }}>
           {[
-            { t: 'Phase 1 — Live', items: ['Arbitrum Sepolia', 'ERC-7984 tokens', 'iExec NOX TEE', 'Privy + Telegram'] },
-            { t: 'Phase 2 — Adapter-ready', items: ['Solana Devnet', 'Umbra stealth', 'FHE encryption', 'IKA dWallet'] },
-            { t: 'Architecture', items: ['Chain-agnostic adapters', 'TEE-backed compute', 'Aggregate-only state', 'Zero member enumeration'] },
+            { t: 'Launch focus', items: ['Solana devnet', 'Privy wallet UX', 'Umbra hidden state', 'IKA dWallet capability'] },
+            { t: 'Privacy stance', items: ['No member list', 'Aggregate-only analytics', 'Non-leaky access checks', 'Creator-selected previews'] },
+            { t: 'Adapter history', items: ['Arbitrum USDC contracts', 'Hardhat tests', 'Chain adapter pattern', 'Legacy EVM path intact'] },
           ].map((s, i) => (
             <div key={i}>
               <div className="t-label mb-3">{s.t}</div>
@@ -347,8 +347,8 @@ function FAQSection() {
 
   const faqs = [
     {
-      q: 'What is a Confidential Membership Token?',
-      a: "It's an ERC-7984-compliant token where the balance (encoding tier level) is stored as a cryptographic commitment. On-chain observers see a bytes32 pointer — not whether you're Basic, Pro, or VIP.",
+      q: 'What is SORTS building on Solana?',
+      a: 'SORTS is building private subscription rails for paid communities: Solana wallet-confirmed joins, hidden or non-leaky membership state, creator-selected preview content, and aggregate-only creator analytics.',
     },
     {
       q: 'Can the creator see who subscribed?',
@@ -360,15 +360,15 @@ function FAQSection() {
     },
     {
       q: 'How does Telegram access work?',
-      a: 'You sign a message (EIP-712) linking your Telegram ID to your wallet. The Telegram bot verifies your on-chain membership for every /content request. No cached membership status.',
+      a: 'The Telegram flow is designed as an access rail: the bot checks active membership through backend/chain services and grants or revokes access without exposing a public member list.',
     },
     {
       q: 'What is the protocol fee?',
-      a: '5% of every subscription payment is collected at the smart contract level and forwarded to the SORTS treasury. Fully transparent and visible on-chain.',
+      a: 'The current model targets a subscription take rate for SORTS. Legacy Arbitrum contracts use a 5% protocol fee, while Solana fee routing will be documented as the adapter lands.',
     },
     {
       q: 'Is this production-ready?',
-      a: 'SORTS is built for the iExec Vibe Coding Challenge 2026. Phase 1 runs on Arbitrum Sepolia (testnet). Production deployment on Arbitrum mainnet is Phase 2.',
+      a: 'No. The current launch target is a Solana devnet MVP. Umbra and IKA paths are labeled honestly as experimental or pre-alpha where appropriate, and mainnet is out of scope for this sprint.',
     },
   ];
 
@@ -416,7 +416,7 @@ function CTASection() {
           <span className="hero-grad-text">Nobody else's business.</span>
         </h2>
         <p className="t-body text-muted mb-6" style={{ fontSize: 15 }}>
-          Free to deploy. 5% protocol fee on member payments. No platform lock-in.
+          Launch on Solana devnet, prove private access, and keep the subscriber graph out of sight.
         </p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Link href="/studio/create" id="cta-launch-btn">
@@ -438,7 +438,7 @@ function LandingFooter() {
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
         <SortsLogoFull markSize={20} wordmarkSize={11} />
       </div>
-      <p>© 2026 SORTS Protocol — Confidential community infrastructure · iExec Vibe Coding Challenge</p>
+      <p>© 2026 SORTS Protocol — Private subscription rails for Solana communities</p>
     </footer>
   );
 }
