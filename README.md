@@ -1,8 +1,7 @@
 # SORTS — Privacy-First Community Platform
 
-**iExec Vibe Coding Challenge 2026 submission**
 
-SORTS lets creators deploy private membership communities on Arbitrum Sepolia. Subscribers get gated content through a web app and Telegram bot. Phase 1 uses ERC-7984-shaped membership commitments for on-chain tiers and iExec DataProtector for protected content.
+SORTS lets creators deploy private membership communities on Solana. Subscribers get gated content through a web app and Telegram bot.
 
 ---
 
