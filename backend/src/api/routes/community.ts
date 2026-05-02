@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import type { Database } from 'better-sqlite3';
 import { CommunityService, CreateCommunitySchema } from '../../services/community';
+import { creatorActionMessage, verifyCreatorProof } from '../walletProof';
 
 export function communityRouter(db: Database): Router {
   const router = Router();
@@ -39,10 +40,18 @@ export function communityRouter(db: Database): Router {
   });
 
   // POST /api/communities — called by frontend after successful on-chain deployment
-  router.post('/', (req: Request, res: Response) => {
+  router.post('/', async (req: Request, res: Response) => {
     const parsed = CreateCommunitySchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.flatten() });
+    }
+    const proofOk = await verifyCreatorProof(req, parsed.data.contractAddress, parsed.data.creatorWallet);
+    if (!proofOk) {
+      return res.status(401).json({
+        success: false,
+        error: 'Creator wallet signature required',
+        messageToSign: creatorActionMessage(parsed.data.contractAddress, parsed.data.creatorWallet),
+      });
     }
     try {
       const id = svc.create(parsed.data);

@@ -3,7 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { ContentService, CreatePostSchema, UpdatePostSchema, type ContentRow } from '../../services/content/ContentService';
 import { ChainServiceFactory } from '../../services/chain/ChainServiceFactory';
 import { DataProtectorContentService } from '../../services/content/DataProtectorContentService';
-import { contentReadMessage, verifyContentReadProof } from '../walletProof';
+import { contentReadMessage, creatorActionMessage, verifyContentReadProof, verifyCreatorProof } from '../walletProof';
 
 const dataProtector = new DataProtectorContentService();
 
@@ -22,6 +22,14 @@ export function contentRouter(db: Database): Router {
       const creatorWallet = typeof req.query.creatorWallet === 'string' ? req.query.creatorWallet : null;
 
       if (creatorWallet && svc.assertCommunityOwner(communityId, creatorWallet)) {
+        const proofOk = await verifyCreatorProof(req, communityId, creatorWallet);
+        if (!proofOk) {
+          return res.status(401).json({
+            success: false,
+            error: 'Creator wallet signature required',
+            messageToSign: creatorActionMessage(communityId, creatorWallet),
+          });
+        }
         return res.json({ success: true, data: svc.listForCreator(communityId, creatorWallet) });
       }
 
@@ -67,6 +75,14 @@ export function contentRouter(db: Database): Router {
 
       const creatorWallet = typeof req.query.creatorWallet === 'string' ? req.query.creatorWallet : null;
       if (creatorWallet && svc.assertCreatorOwns(post.id, communityId, creatorWallet)) {
+        const proofOk = await verifyCreatorProof(req, communityId, creatorWallet);
+        if (!proofOk) {
+          return res.status(401).json({
+            success: false,
+            error: 'Creator wallet signature required',
+            messageToSign: creatorActionMessage(communityId, creatorWallet),
+          });
+        }
         return res.json({ success: true, data: serializePost(post, { includeBody: true }) });
       }
 
@@ -129,6 +145,14 @@ export function contentRouter(db: Database): Router {
     if (!svc.assertCommunityOwner(req.params.communityId, parsed.data.creatorWallet)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
+    const proofOk = await verifyCreatorProof(req, req.params.communityId, parsed.data.creatorWallet);
+    if (!proofOk) {
+      return res.status(401).json({
+        success: false,
+        error: 'Creator wallet signature required',
+        messageToSign: creatorActionMessage(req.params.communityId, parsed.data.creatorWallet),
+      });
+    }
     if (parsed.data.protectWithDataProtector && !dataProtector.isConfigured()) {
       return res.status(503).json({ success: false, error: 'iExec DataProtector is not configured on the backend' });
     }
@@ -142,13 +166,21 @@ export function contentRouter(db: Database): Router {
   });
 
   // PATCH /api/content/:communityId/:postId
-  router.patch('/:communityId/:postId', (req: Request, res: Response) => {
+  router.patch('/:communityId/:postId', async (req: Request, res: Response) => {
     const parsed = UpdatePostSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.flatten() });
     }
     const { creatorWallet } = req.body;
     if (!creatorWallet) return res.status(400).json({ success: false, error: 'creatorWallet required' });
+    const proofOk = await verifyCreatorProof(req, req.params.communityId, creatorWallet);
+    if (!proofOk) {
+      return res.status(401).json({
+        success: false,
+        error: 'Creator wallet signature required',
+        messageToSign: creatorActionMessage(req.params.communityId, creatorWallet),
+      });
+    }
     if (!svc.assertCreatorOwns(req.params.postId, req.params.communityId, creatorWallet)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
@@ -161,9 +193,17 @@ export function contentRouter(db: Database): Router {
   });
 
   // DELETE /api/content/:communityId/:postId
-  router.delete('/:communityId/:postId', (req: Request, res: Response) => {
+  router.delete('/:communityId/:postId', async (req: Request, res: Response) => {
     const { creatorWallet } = req.body;
     if (!creatorWallet) return res.status(400).json({ success: false, error: 'creatorWallet required' });
+    const proofOk = await verifyCreatorProof(req, req.params.communityId, creatorWallet);
+    if (!proofOk) {
+      return res.status(401).json({
+        success: false,
+        error: 'Creator wallet signature required',
+        messageToSign: creatorActionMessage(req.params.communityId, creatorWallet),
+      });
+    }
     try {
       const deleted = svc.delete(req.params.postId, creatorWallet);
       if (!deleted) return res.status(404).json({ success: false, error: 'Post not found or not authorized' });

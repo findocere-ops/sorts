@@ -1,5 +1,5 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-export const FACTORY_ADDRESS = (process.env.NEXT_PUBLIC_SORTS_FACTORY_ADDRESS ?? '0x0') as `0x${string}`;
+export const FACTORY_ADDRESS = (process.env.NEXT_PUBLIC_SORTS_FACTORY_ADDRESS?.trim() ?? '0x0') as `0x${string}`;
 
 export const TIER_NAMES: Record<number, string> = {
   1: 'Basic',

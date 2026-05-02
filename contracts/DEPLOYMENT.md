@@ -1,63 +1,108 @@
-# Beginner's Guide: Deploying SORTS to Arbitrum Sepolia
+# SORTS USDC Deployment Flow
 
-Welcome! You don't need to know how to code to do this. We just need to give the system a "burner wallet" (a temporary crypto wallet that only holds test money) so it can pay the fake fees required to deploy the contract to the Arbitrum Sepolia test network.
+SORTS memberships on Arbitrum Sepolia are paid in USDC, not native ETH. Use a burner wallet and keep all secrets in local `.env` files only.
 
-Follow these steps exactly:
+## 1. Prepare a Burner Wallet
 
-## Step 1: Create a Burner Wallet
-If you don't have one, create a brand new wallet in MetaMask. **Do not use a wallet that holds real money.**
-1. Open your MetaMask extension.
-2. Go to Account Settings -> Account Details -> **Export Private Key**.
-3. Copy this long string of characters.
+Create a fresh wallet for deployment. Do not use a wallet that holds real funds.
 
-## Step 2: Get Free Test Money
-Your burner wallet needs "Arbitrum Sepolia ETH" to pay for the deployment.
-1. Go to the [Alchemy Arbitrum Sepolia Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia) or [QuickNode Faucet](https://faucet.quicknode.com/arbitrum/sepolia).
-2. Paste your burner wallet's public address (starts with `0x`) and request funds.
+The deployer wallet needs Arbitrum Sepolia ETH for gas. Fund it from a trusted Arbitrum Sepolia faucet before deploying.
 
-## Step 3: Tell the System Your Keys
-We need to save your private key in a hidden file so the deploy script can use it. **This file is completely ignored by version control, so it will never be uploaded to GitHub.**
+Test subscriber wallets need Circle testnet USDC. Use the Circle faucet:
 
-1. Inside your code editor, go into the `contracts` folder.
-2. Create a brand new file and name it exactly `.env` (don't forget the dot!).
-3. Paste the following text inside it:
+https://faucet.circle.com/
 
-\`\`\`env
-PRIVATE_KEY=paste_your_private_key_here
-ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-\`\`\`
-*(Replace `paste_your_private_key_here` with the private key you exported from MetaMask. Do not add quotes around it. If your key starts with `0x`, remove the `0x` part.)*
+## 2. Configure `contracts/.env`
 
-## Step 4: Run the Deploy Script
-Now that the system has a wallet with test money, run this exact command in your terminal at the bottom of your editor:
+Create or update `contracts/.env` locally. Never commit it.
 
-\`\`\`bash
+Required keys:
+
+```env
+PRIVATE_KEY=
+ARBITRUM_SEPOLIA_RPC_URL=
+```
+
+Optional key:
+
+```env
+USDC_ADDRESS=
+```
+
+If `USDC_ADDRESS` is not set, the deploy script uses Circle's Arbitrum Sepolia testnet USDC:
+
+```text
+0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
+```
+
+Do not print private keys, RPC URLs, or secret values in logs, issues, commits, or screenshots.
+
+## 3. Compile
+
+```bash
+pnpm --filter contracts compile
+```
+
+## 4. Test
+
+```bash
+pnpm --filter contracts test
+```
+
+## 5. Deploy
+
+```bash
 pnpm --filter contracts deploy:sepolia
-\`\`\`
+```
 
-If it works, the terminal will print out a bunch of text, including something that says:
-`SortsFactory address: 0x...` (followed by a long string).
-**Copy that address!**
+The deployment writes the Arbitrum Sepolia deployment artifact and prints the new SortsFactory address.
 
-## Step 5: Connect the Frontend and Backend
-Now we need to tell the website where the contract lives.
+## 6. Update App Environments
 
-**1. Update the Frontend:**
-Open the file `frontend/.env.local` (create it if it doesn't exist) and add these lines:
-\`\`\`env
-NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=paste_the_factory_address_here
-NEXT_PUBLIC_CHAIN_ID=421614
-NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-\`\`\`
+After each redeploy, the old factory address is stale.
 
-**2. Update the Backend:**
-Open the file `backend/.env` (create it if it doesn't exist) and add these lines:
-\`\`\`env
-SORTS_FACTORY_ADDRESS=paste_the_factory_address_here
-ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-\`\`\`
+Copy the printed factory address into `frontend/.env.local`:
 
-*(Make sure you replace `paste_the_factory_address_here` with the actual address you copied in Step 4).*
+```env
+NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=
+```
 
-## You're done!
-Restart your app if it's running. When you go back to `http://localhost:3000/studio/create`, the "SortsFactory is not configured" message will be gone, and you can create your first community!
+Copy the same factory address into `backend/.env`:
+
+```env
+SORTS_FACTORY_ADDRESS=
+```
+
+Do not commit `.env` files.
+
+## 7. Restart
+
+Restart the app from the repo root:
+
+```bash
+pnpm dev
+```
+
+## 8. Verify
+
+Open:
+
+```text
+http://localhost:3000/status
+```
+
+Then open:
+
+```text
+http://localhost:3000/studio/create
+```
+
+The status page should show the factory as configured, Arbitrum Sepolia as the expected chain, and backend health if the frontend API URL is configured.
+
+## Safety Rules
+
+- Never commit `.env` files.
+- Never print private keys.
+- Never print RPC URLs.
+- Never deploy from a wallet that holds real funds.
+- Never add enumerable member-list reads to contracts or backend APIs.

@@ -3,19 +3,24 @@ pragma solidity ^0.8.24;
 
 import "./SortsMembership.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title SortsFactory
  * @notice Deploys new SortsMembership contracts (one per community).
- *         The factory also acts as the protocol treasury receiver for 5% fees.
+ *         The factory also acts as the protocol treasury receiver for 5% USDC fees.
  */
 contract SortsFactory is Ownable {
+    using SafeERC20 for IERC20;
+
     // ── State ────────────────────────────────────────────────────────────────
+    IERC20 public immutable paymentToken;
     uint256 public communityCount;
     mapping(uint256 => address) public communities;
     mapping(address => address[]) public creatorCommunities;
 
-    // Revenue tracking (protocol-level)
+    // Native ETH revenue tracking (kept for any direct treasury deposits)
     uint256 public totalProtocolRevenue;
 
     // ── Events ───────────────────────────────────────────────────────────────
@@ -27,7 +32,10 @@ contract SortsFactory is Ownable {
         string symbol
     );
 
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    constructor(address initialOwner, address paymentToken_) Ownable(initialOwner) {
+        require(paymentToken_ != address(0), "Payment token required");
+        paymentToken = IERC20(paymentToken_);
+    }
 
     // ── Factory ──────────────────────────────────────────────────────────────
 
@@ -36,7 +44,7 @@ contract SortsFactory is Ownable {
      * @param name_      Community display name
      * @param symbol_    Token symbol (max 5 chars)
      * @param tierIds    Tier IDs (1, 2, 3)
-     * @param prices     Subscription price in wei per tier
+     * @param prices     Subscription price in USDC base units per tier
      * @param durations  Duration in seconds per tier
      */
     function createCommunity(
@@ -44,7 +52,7 @@ contract SortsFactory is Ownable {
         string calldata symbol_,
         uint8[] calldata tierIds,
         uint256[] calldata prices,
-        uint256[] calldata durations
+        uint64[] calldata durations
     ) external returns (uint256 communityId, address contractAddress) {
         require(bytes(name_).length > 0, "Name required");
         require(bytes(symbol_).length <= 5, "Symbol max 5 chars");
@@ -57,6 +65,7 @@ contract SortsFactory is Ownable {
             symbol_,
             msg.sender,
             address(this),  // protocol treasury = this factory
+            address(paymentToken),
             tierIds,
             prices,
             durations
@@ -91,5 +100,9 @@ contract SortsFactory is Ownable {
         require(amount <= address(this).balance, "Insufficient balance");
         (bool ok,) = to.call{value: amount}("");
         require(ok, "Withdrawal failed");
+    }
+
+    function withdrawTokens(address to, uint256 amount) external onlyOwner {
+        paymentToken.safeTransfer(to, amount);
     }
 }

@@ -2,9 +2,12 @@ import { ethers, network } from 'hardhat';
 import * as fs from 'fs';
 import * as path from 'path';
 
+const DEFAULT_ARBITRUM_SEPOLIA_USDC = '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d';
+
 async function main() {
   const isArbitrumSepolia = network.name === 'arbitrumSepolia';
   const missing: string[] = [];
+  const usdcAddress = process.env.USDC_ADDRESS ?? DEFAULT_ARBITRUM_SEPOLIA_USDC;
 
   if (isArbitrumSepolia && !process.env.PRIVATE_KEY) {
     missing.push('PRIVATE_KEY');
@@ -38,7 +41,7 @@ async function main() {
   console.log('Deployer balance:', ethers.formatEther(await ethers.provider.getBalance(deployer.address)), 'ETH');
 
   const SortsFactory = await ethers.getContractFactory('SortsFactory');
-  const factory = await SortsFactory.deploy(deployer.address);
+  const factory = await SortsFactory.deploy(deployer.address, usdcAddress);
   const deploymentTx = factory.deploymentTransaction();
 
   if (deploymentTx?.hash) {
@@ -58,6 +61,7 @@ async function main() {
     chainId: 421614,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
+    paymentToken: usdcAddress,
     contracts: {
       SortsFactory: factoryAddress,
     },

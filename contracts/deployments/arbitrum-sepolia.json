@@ -1,0 +1,21 @@
+{
+  "network": "arbitrum-sepolia",
+  "hardhatNetwork": "arbitrumSepolia",
+  "chainId": 421614,
+  "deployedAt": "2026-05-01T15:38:34.203Z",
+  "deployer": "0xF4a11EfAFF1CC2B3071E3333444F97F285Bfa07C",
+  "paymentToken": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+  "contracts": {
+    "SortsFactory": "0x2d6c2b68a7c3cb4A202E9d1D0aEe0469dae669B0"
+  },
+  "transactions": {
+    "SortsFactory": "0x592f9c580ce62179f7639e74170994e64b30bea61412088b7ff4203a33638faf"
+  },
+  "blocks": {
+    "SortsFactory": 264494047
+  },
+  "arbiscanLinks": {
+    "factory": "https://sepolia.arbiscan.io/address/0x2d6c2b68a7c3cb4A202E9d1D0aEe0469dae669B0",
+    "transaction": "https://sepolia.arbiscan.io/tx/0x592f9c580ce62179f7639e74170994e64b30bea61412088b7ff4203a33638faf"
+  }
+}

@@ -32,7 +32,7 @@ export const CreateCommunitySchema = z.object({
   description: z.string().max(1000).optional(),
   category: z.enum(['alpha', 'research', 'education', 'institution', 'protocol', 'other']).default('other'),
   creatorWallet: z.string().startsWith('0x'),
-  chainId: z.string().default('arbitrum-sepolia'),
+  chainId: z.union([z.string(), z.number()]).default('arbitrum-sepolia').transform(String),
   isInstitution: z.boolean().default(false),
   tiers: z.array(z.object({
     level: z.number().int().min(1).max(3),

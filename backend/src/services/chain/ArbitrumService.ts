@@ -1,11 +1,11 @@
-import { createPublicClient, http, parseAbi } from 'viem';
+import { createPublicClient, formatUnits, http, parseAbi } from 'viem';
 import { arbitrumSepolia } from 'viem/chains';
 import type { IChainService, CreateCommunityConfig, SubscribeParams } from '@sorts/shared';
 import type { AggregateStats } from '@sorts/shared';
 import type { MembershipStatus } from '@sorts/shared';
 
 const FACTORY_ABI = parseAbi([
-  'function createCommunity(string name, string symbol, uint8[] tierIds, uint256[] prices, uint256[] durations) returns (uint256 communityId, address contractAddress)',
+  'function createCommunity(string name, string symbol, uint8[] tierIds, uint256[] prices, uint64[] durations) returns (uint256 communityId, address contractAddress)',
   'function getCommunity(uint256 communityId) view returns (address)',
   'function getCommunityCount() view returns (uint256)',
   'function getCreatorCommunities(address creator) view returns (address[])',
@@ -13,12 +13,14 @@ const FACTORY_ABI = parseAbi([
 ]);
 
 const MEMBERSHIP_ABI = parseAbi([
-  'function subscribe(uint8 tier) payable',
-  'function renewSubscription() payable',
+  'function subscribe(uint8 tier)',
+  'function renewSubscription()',
   'function checkAccess(address user) view returns (bool)',
   'function checkTierAccess(address user, uint8 requiredTier) view returns (bool)',
   'function getMemberExpiry(address user) view returns (uint256)',
+  'function getRenewalPrice(address user) view returns (uint256)',
   'function getAggregateStats() view returns (uint256 members, uint256 revenue, uint256 active)',
+  'function paymentToken() view returns (address)',
   'function tierPrices(uint8 tier) view returns (uint256)',
   'function memberExpiry(address user) view returns (uint256)',
 ]);
@@ -79,7 +81,7 @@ export class ArbitrumService implements IChainService {
       activeMemberships: Number(active),
       expiredMemberships: Number(members) - Number(active),
       totalRevenueWei: revenue.toString(),
-      totalRevenueDisplay: `${(Number(revenue) / 1e18).toFixed(4)} ETH`,
+      totalRevenueDisplay: `${formatUsdc(revenue)} USDC`,
       activeRatio: Number(members) > 0 ? Number(active) / Number(members) : 0,
     };
   }
@@ -120,4 +122,8 @@ export class ArbitrumService implements IChainService {
       args: [creatorWallet as `0x${string}`],
     }) as string[];
   }
+}
+
+function formatUsdc(value: bigint): string {
+  return formatUnits(value, 6);
 }

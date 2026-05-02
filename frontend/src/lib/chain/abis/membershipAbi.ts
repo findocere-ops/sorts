@@ -2,16 +2,23 @@ export const membershipAbi = [
   {
     type: 'function',
     name: 'subscribe',
-    stateMutability: 'payable',
+    stateMutability: 'nonpayable',
     inputs: [{ name: 'tier', type: 'uint8' }],
     outputs: [],
   },
   {
     type: 'function',
     name: 'renewSubscription',
-    stateMutability: 'payable',
+    stateMutability: 'nonpayable',
     inputs: [],
     outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'paymentToken',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
   },
   {
     type: 'function',

@@ -3,6 +3,8 @@ pragma solidity ^0.8.24;
 
 import "./interfaces/IERC7984.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 /**
@@ -16,9 +18,11 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  *         Commitment scheme: _balances[user] = keccak256(abi.encodePacked(actualTier, _salts[user]))
  *         Actual tier levels are stored in a private mapping accessible only within the contract.
  *
- *         Protocol fee (5% of subscription revenue) is forwarded to the protocol treasury.
+ *         Protocol fee (5% of USDC subscription revenue) is forwarded to the protocol treasury.
  */
 contract SortsMembership is IERC7984, ERC165, Ownable {
+    using SafeERC20 for IERC20;
+
     // ERC-7984 interface ID
     bytes4 private constant _INTERFACE_ID_ERC7984 = 0x4958f2a4;
 
@@ -29,11 +33,12 @@ contract SortsMembership is IERC7984, ERC165, Ownable {
 
     address public immutable creator;
     address public immutable protocolTreasury;
+    IERC20 public immutable paymentToken;
     uint256 public constant PROTOCOL_FEE_BPS = 500; // 5% = 500 basis points
 
     // Tier prices and durations (set at deployment by creator)
-    mapping(uint8 => uint256) public tierPrices;    // tier => price in wei
-    mapping(uint8 => uint256) public tierDurations; // tier => duration in seconds
+    mapping(uint8 => uint256) public tierPrices;   // tier => price in USDC base units
+    mapping(uint8 => uint64) public tierDurations; // tier => duration in seconds
 
     // Commitment-based confidential balances (ERC-7984 compliance)
     mapping(address => bytes32) private _balances; // commitment pointer
@@ -64,15 +69,18 @@ contract SortsMembership is IERC7984, ERC165, Ownable {
         string memory symbol_,
         address creator_,
         address protocolTreasury_,
+        address paymentToken_,
         uint8[] memory tierIds,
         uint256[] memory prices,
-        uint256[] memory durations
+        uint64[] memory durations
     ) Ownable(creator_) {
         require(tierIds.length == prices.length && prices.length == durations.length, "Length mismatch");
+        require(paymentToken_ != address(0), "Payment token required");
         _name = name_;
         _symbol = symbol_;
         creator = creator_;
         protocolTreasury = protocolTreasury_;
+        paymentToken = IERC20(paymentToken_);
 
         for (uint256 i = 0; i < tierIds.length; i++) {
             require(tierIds[i] >= 1 && tierIds[i] <= 3, "Invalid tier");
@@ -88,17 +96,19 @@ contract SortsMembership is IERC7984, ERC165, Ownable {
      * @param tier Tier level: 1=Basic, 10=Pro (stored as 2), 100=VIP (stored as 3).
      *        Use 1, 2, or 3 for the tier selector.
      */
-    function subscribe(uint8 tier) external payable {
+    function subscribe(uint8 tier) external {
         require(tier >= 1 && tier <= 3, "Invalid tier");
-        require(msg.value >= tierPrices[tier], "Insufficient payment");
         require(memberExpiry[msg.sender] < block.timestamp, "Already active - use renew");
+
+        uint256 price = tierPrices[tier];
+        paymentToken.safeTransferFrom(msg.sender, address(this), price);
 
         _mintConfidentialToken(msg.sender, tier);
         memberExpiry[msg.sender] = block.timestamp + tierDurations[tier];
         totalMembers++;
         activeMembers++;
 
-        _collectProtocolFee(msg.value);
+        _collectProtocolFee(price);
 
         emit MemberSubscribed(msg.sender, memberExpiry[msg.sender]);
     }
@@ -106,10 +116,12 @@ contract SortsMembership is IERC7984, ERC165, Ownable {
     /**
      * @notice Renew an existing membership.
      */
-    function renewSubscription() external payable {
+    function renewSubscription() external {
         uint8 tier = _tiers[msg.sender];
         require(tier >= 1 && tier <= 3, "No membership to renew");
-        require(msg.value >= tierPrices[tier], "Insufficient payment");
+
+        uint256 price = tierPrices[tier];
+        paymentToken.safeTransferFrom(msg.sender, address(this), price);
 
         if (memberExpiry[msg.sender] < block.timestamp) {
             // Was expired — count them as newly active again
@@ -119,7 +131,7 @@ contract SortsMembership is IERC7984, ERC165, Ownable {
             memberExpiry[msg.sender] += tierDurations[tier];
         }
 
-        _collectProtocolFee(msg.value);
+        _collectProtocolFee(price);
 
         emit MembershipRenewed(msg.sender, memberExpiry[msg.sender]);
     }
@@ -244,11 +256,8 @@ contract SortsMembership is IERC7984, ERC165, Ownable {
 
         totalRevenue += amount;
 
-        (bool feeOk,) = protocolTreasury.call{value: fee}("");
-        require(feeOk, "Protocol fee transfer failed");
-
-        (bool creatorOk,) = creator.call{value: creatorShare}("");
-        require(creatorOk, "Creator payment failed");
+        paymentToken.safeTransfer(protocolTreasury, fee);
+        paymentToken.safeTransfer(creator, creatorShare);
 
         emit ProtocolFeeCollected(fee);
     }

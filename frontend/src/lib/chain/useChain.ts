@@ -10,6 +10,7 @@ import {
   useSortsSwitchChain,
   useSortsWriteContract,
 } from '@/components/providers/PrivyProvider';
+import { erc20Abi } from './abis/erc20Abi';
 import { factoryAbi } from './abis/factoryAbi';
 import { membershipAbi } from './abis/membershipAbi';
 import type {
@@ -27,7 +28,7 @@ import type {
 export const ARBITRUM_SEPOLIA_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? arbitrumSepolia.id);
 export const ARBITRUM_SEPOLIA_RPC_URL = process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL;
 export const SORTS_FACTORY_ADDRESS = process.env.NEXT_PUBLIC_SORTS_FACTORY_ADDRESS;
-export const ARBITRUM_SEPOLIA_ETH_LABEL = 'Arbitrum Sepolia ETH';
+export const USDC_PAYMENT_TOKEN_LABEL = 'USDC';
 
 const EXPLORER_BASE_URL = 'https://sepolia.arbiscan.io';
 
@@ -36,8 +37,14 @@ const publicClient = createPublicClient({
   transport: http(ARBITRUM_SEPOLIA_RPC_URL || undefined),
 });
 
+export function getConfiguredFactoryAddress(address = SORTS_FACTORY_ADDRESS): Address | null {
+  const normalized = address?.trim();
+  if (!normalized || !isAddress(normalized) || normalized === zeroAddress) return null;
+  return normalized as Address;
+}
+
 export function isFactoryConfigured(address = SORTS_FACTORY_ADDRESS): address is Address {
-  return Boolean(address && isAddress(address) && address !== zeroAddress);
+  return Boolean(getConfiguredFactoryAddress(address));
 }
 
 export function shortenAddress(address?: string | null, chars = 4): string {
@@ -97,14 +104,21 @@ export function useChain() {
   const assertReadyForFactoryWrite = useCallback(() => {
     if (!address) throw new Error('Connect a wallet first.');
     if (wrongNetwork) throw new Error('Switch to Arbitrum Sepolia before sending a transaction.');
-    if (!isFactoryConfigured()) throw new Error('Set NEXT_PUBLIC_SORTS_FACTORY_ADDRESS after deploying SortsFactory.');
-    return SORTS_FACTORY_ADDRESS as Address;
+    const factoryAddress = getConfiguredFactoryAddress();
+    if (!factoryAddress) throw new Error('Set NEXT_PUBLIC_SORTS_FACTORY_ADDRESS after deploying SortsFactory.');
+    return factoryAddress;
   }, [address, wrongNetwork]);
 
   const assertReadyForMembershipWrite = useCallback((communityAddress: Address) => {
     if (!address) throw new Error('Connect a wallet first.');
     if (wrongNetwork) throw new Error('Switch to Arbitrum Sepolia before sending a transaction.');
     if (!isAddress(communityAddress)) throw new Error('Community contract address is invalid.');
+  }, [address, wrongNetwork]);
+
+  const assertReadyForTokenWrite = useCallback((spender: Address) => {
+    if (!address) throw new Error('Connect a wallet first.');
+    if (wrongNetwork) throw new Error('Switch to Arbitrum Sepolia before sending a transaction.');
+    if (!isAddress(spender)) throw new Error('USDC spender address is invalid.');
   }, [address, wrongNetwork]);
 
   const waitForReceipt = useCallback(async (hash: Hash): Promise<TransactionReceipt> => {
@@ -151,6 +165,46 @@ export function useChain() {
     }
   }, [assertReadyForFactoryWrite, waitForReceipt, writeContractAsync]);
 
+  const getUsdcAddress = useCallback(async (): Promise<Address> => {
+    const factoryAddress = getConfiguredFactoryAddress();
+    if (!factoryAddress) {
+      throw new Error('Set NEXT_PUBLIC_SORTS_FACTORY_ADDRESS after deploying SortsFactory.');
+    }
+
+    return publicClient.readContract({
+      address: factoryAddress,
+      abi: factoryAbi,
+      functionName: 'paymentToken',
+    });
+  }, []);
+
+  const approveUsdc = useCallback(async (spender: Address, amount: bigint): Promise<TransactionResult> => {
+    setError(null);
+
+    try {
+      assertReadyForTokenWrite(spender);
+      const usdcAddress = await getUsdcAddress();
+      setTransactionState('awaiting-signature');
+
+      const hash = await writeContractAsync({
+        address: usdcAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [spender, amount],
+      });
+
+      setTxHash(hash);
+      const receipt = await waitForReceipt(hash);
+      setTransactionState('transaction-confirmed');
+      return { txHash: hash, receipt };
+    } catch (caught) {
+      const message = getErrorMessage(caught);
+      setError(message);
+      setTransactionState('transaction-failed');
+      throw caught;
+    }
+  }, [assertReadyForTokenWrite, getUsdcAddress, waitForReceipt, writeContractAsync]);
+
   const subscribe = useCallback(async (input: SubscribeInput): Promise<TransactionResult> => {
     setError(null);
 
@@ -163,7 +217,6 @@ export function useChain() {
         abi: membershipAbi,
         functionName: 'subscribe',
         args: [input.tier],
-        value: input.paymentWei,
       });
 
       setTxHash(hash);
@@ -189,7 +242,6 @@ export function useChain() {
         address: input.communityAddress,
         abi: membershipAbi,
         functionName: 'renewSubscription',
-        value: input.paymentWei,
       });
 
       setTxHash(hash);
@@ -218,6 +270,31 @@ export function useChain() {
     return { totalMembers, totalRevenueWei, activeMemberships };
   }, []);
 
+  const readUsdcAllowance = useCallback(async (owner: Address, spender: Address): Promise<bigint> => {
+    if (!isAddress(owner)) throw new Error('USDC owner address is invalid.');
+    if (!isAddress(spender)) throw new Error('USDC spender address is invalid.');
+
+    const usdcAddress = await getUsdcAddress();
+    return publicClient.readContract({
+      address: usdcAddress,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [owner, spender],
+    });
+  }, [getUsdcAddress]);
+
+  const readUsdcBalance = useCallback(async (owner: Address): Promise<bigint> => {
+    if (!isAddress(owner)) throw new Error('USDC owner address is invalid.');
+
+    const usdcAddress = await getUsdcAddress();
+    return publicClient.readContract({
+      address: usdcAddress,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [owner],
+    });
+  }, [getUsdcAddress]);
+
   return {
     address,
     chainId,
@@ -226,13 +303,17 @@ export function useChain() {
     transactionState,
     txHash,
     error,
-    factoryAddress: factoryConfigured ? (SORTS_FACTORY_ADDRESS as Address) : null,
+    factoryAddress: getConfiguredFactoryAddress(),
     factoryConfigured,
     wrongNetwork,
-    paymentTokenLabel: ARBITRUM_SEPOLIA_ETH_LABEL,
+    paymentTokenLabel: USDC_PAYMENT_TOKEN_LABEL,
+    approveUsdc,
     createCommunity,
     subscribe,
     renew,
+    getUsdcAddress,
+    readUsdcAllowance,
+    readUsdcBalance,
     getAggregateStats,
     resetTransaction,
     switchToArbitrumSepolia,

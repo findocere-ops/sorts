@@ -13,12 +13,6 @@ export function CreatorStudioLayout({ children, title = 'Creator Studio' }: { ch
         <main>{children}</main>
       </div>
       <MobileBottomNav mode="creator" />
-      <style jsx>{`
-        .studio-content { padding-left: var(--sidebar-w); }
-        @media (max-width: 767px) {
-          .studio-content { padding-left: 0; padding-bottom: var(--mobile-nav-h); }
-        }
-      `}</style>
     </div>
   );
 }

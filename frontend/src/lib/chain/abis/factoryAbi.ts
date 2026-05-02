@@ -8,7 +8,7 @@ export const factoryAbi = [
       { name: 'symbol_', type: 'string' },
       { name: 'tierIds', type: 'uint8[]' },
       { name: 'prices', type: 'uint256[]' },
-      { name: 'durations', type: 'uint256[]' },
+      { name: 'durations', type: 'uint64[]' },
     ],
     outputs: [
       { name: 'communityId', type: 'uint256' },
@@ -35,6 +35,13 @@ export const factoryAbi = [
     stateMutability: 'view',
     inputs: [{ name: 'creator', type: 'address' }],
     outputs: [{ name: '', type: 'address[]' }],
+  },
+  {
+    type: 'function',
+    name: 'paymentToken',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
   },
   {
     type: 'event',

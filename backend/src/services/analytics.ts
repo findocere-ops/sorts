@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import type { IChainService } from '@sorts/shared';
+import { formatUnits } from 'viem';
 
 export interface CommunityStats {
   communityId: string;
@@ -57,7 +58,7 @@ export class AnalyticsService {
         expiredMemberships: totalMembers - activeMembers,
         activeRatio: totalMembers > 0 ? activeMembers / totalMembers : 0,
         totalRevenueWei: cached.total_revenue_wei,
-        totalRevenueDisplay: formatEth(cached.total_revenue_wei),
+        totalRevenueDisplay: formatUsdc(cached.total_revenue_wei),
         contentCount,
         cachedAt: cached.cached_at,
       };
@@ -90,7 +91,7 @@ export class AnalyticsService {
       expiredMemberships: chainStats.totalMembers - chainStats.activeMemberships,
       activeRatio: chainStats.activeRatio,
       totalRevenueWei: chainStats.totalRevenueWei,
-      totalRevenueDisplay: formatEth(chainStats.totalRevenueWei),
+      totalRevenueDisplay: formatUsdc(chainStats.totalRevenueWei),
       contentCount,
       cachedAt: new Date().toISOString(),
     };
@@ -118,16 +119,15 @@ export class AnalyticsService {
     return {
       totalCommunities: communities.length,
       totalMembers,
-      totalRevenue: formatEth(totalRevenueWei.toString()),
+      totalRevenue: formatUsdc(totalRevenueWei.toString()),
     };
   }
 }
 
-function formatEth(wei: string): string {
+function formatUsdc(value: string): string {
   try {
-    const eth = Number(BigInt(wei)) / 1e18;
-    return `${eth.toFixed(4)} ETH`;
+    return `${formatUnits(BigInt(value), 6)} USDC`;
   } catch {
-    return '0 ETH';
+    return '0 USDC';
   }
 }

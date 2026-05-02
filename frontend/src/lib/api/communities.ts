@@ -1,6 +1,10 @@
 import { apiRequest } from './client';
 import type { ChainId, Community, Tier } from '@/lib/types';
 
+export function creatorActionMessage(scope: string, wallet: string): string {
+  return `SORTS creator action\nScope: ${scope}\nWallet: ${wallet}`;
+}
+
 export interface CreateCommunityPayload {
   contractAddress: string;
   name: string;
@@ -8,7 +12,7 @@ export interface CreateCommunityPayload {
   description?: string;
   category?: Community['category'];
   creatorWallet: string;
-  chainId?: ChainId;
+  chainId?: ChainId | number;
   isInstitution?: boolean;
   tiers: Array<{
     level: Tier['level'];
@@ -33,9 +37,10 @@ export function getCreatorCommunities(wallet: string) {
   return apiRequest<Community[]>(`/api/communities/creator/${wallet}`);
 }
 
-export function createCommunityMetadata(payload: CreateCommunityPayload) {
+export function createCommunityMetadata(payload: CreateCommunityPayload, creatorSig: string) {
   return apiRequest<{ id: string }>('/api/communities', {
     method: 'POST',
     body: payload,
+    headers: { 'x-sorts-creator-sig': creatorSig },
   });
 }
