@@ -1,16 +1,27 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import { ContentService, CreatePostSchema, UpdatePostSchema, type ContentRow } from '../../services/content/ContentService';
 import { ChainServiceFactory } from '../../services/chain/ChainServiceFactory';
 import { DataProtectorContentService } from '../../services/content/DataProtectorContentService';
 import { contentReadMessage, creatorActionMessage, verifyContentReadProof, verifyCreatorProof } from '../walletProof';
+import { privyAuth, requireWalletOwner } from '../middleware/auth';
+import { sigNonce } from '../middleware/sig-nonce';
+import type { PrivyService } from '../../services/wallet/PrivyService';
 
 const dataProtector = new DataProtectorContentService();
 
-export function contentRouter(db: Database): Router {
+interface RouterDeps {
+  privyService: PrivyService | null;
+}
+
+export function contentRouter(db: Database, deps: RouterDeps = { privyService: null }): Router {
   const router: Router = Router();
   const chain = ChainServiceFactory.forChain();
   const svc = new ContentService(db, chain, dataProtector);
+
+  const auth = deps.privyService ? privyAuth(deps.privyService) : passThrough;
+  const ownsCreatorWallet = deps.privyService ? requireWalletOwner('creatorWallet') : passThrough;
+  const replayGuard = sigNonce(db);
 
   // GET /api/content/:communityId
   // Public callers receive metadata only. Members can include wallet+signature
@@ -137,7 +148,7 @@ export function contentRouter(db: Database): Router {
   });
 
   // POST /api/content/:communityId
-  router.post('/:communityId', async (req: Request, res: Response) => {
+  router.post('/:communityId', auth, ownsCreatorWallet, replayGuard, async (req: Request, res: Response) => {
     const parsed = CreatePostSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -166,7 +177,7 @@ export function contentRouter(db: Database): Router {
   });
 
   // PATCH /api/content/:communityId/:postId
-  router.patch('/:communityId/:postId', async (req: Request, res: Response) => {
+  router.patch('/:communityId/:postId', auth, ownsCreatorWallet, replayGuard, async (req: Request, res: Response) => {
     const parsed = UpdatePostSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -193,7 +204,7 @@ export function contentRouter(db: Database): Router {
   });
 
   // DELETE /api/content/:communityId/:postId
-  router.delete('/:communityId/:postId', async (req: Request, res: Response) => {
+  router.delete('/:communityId/:postId', auth, ownsCreatorWallet, replayGuard, async (req: Request, res: Response) => {
     const { creatorWallet } = req.body;
     if (!creatorWallet) return res.status(400).json({ success: false, error: 'creatorWallet required' });
     const proofOk = await verifyCreatorProof(req, req.params.communityId, creatorWallet);
@@ -214,6 +225,10 @@ export function contentRouter(db: Database): Router {
   });
 
   return router;
+}
+
+function passThrough(_req: Request, _res: Response, next: NextFunction): void {
+  next();
 }
 
 function lockPost(post: Omit<ContentRow, 'body'> | ContentRow) {

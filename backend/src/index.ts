@@ -7,37 +7,51 @@ import { communityRouter } from './api/routes/community';
 import { analyticsRouter } from './api/routes/analytics';
 import { contentRouter } from './api/routes/content';
 import { linkRouter } from './api/routes/link';
+import { apiRateLimit } from './api/middleware/rate-limit';
+import { PrivyService } from './services/wallet/PrivyService';
 import { startHandler } from './bot/commands/start';
 import { statusHandler } from './bot/commands/status';
 import { contentHandler } from './bot/commands/content';
 import { subscribeHandler } from './bot/commands/subscribe';
 import { helpHandler } from './bot/commands/help';
+import { loadEnv } from './config/env';
 
 dotenv.config();
 
-const PORT = parseInt(process.env.PORT ?? '3001', 10);
-const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+const env = loadEnv();
+const PORT = env.PORT;
+const FRONTEND_URL = env.FRONTEND_URL;
 
 // ── Database ──────────────────────────────────────────────────────────────────
 const db = openDb();
 runMigrations(db);
 console.log('[db] Migrations complete');
 
+// ── Privy server-auth (optional — only mounted when configured) ────────────
+const privyService =
+  env.PRIVY_APP_ID && env.PRIVY_APP_SECRET
+    ? new PrivyService(env.PRIVY_APP_ID, env.PRIVY_APP_SECRET)
+    : null;
+if (!privyService) {
+  console.warn('[auth] PRIVY_APP_ID / PRIVY_APP_SECRET not set — auth middleware disabled');
+}
+
 // ── Express API ───────────────────────────────────────────────────────────────
 const app = express();
 app.use(cors({ origin: FRONTEND_URL }));
 app.use(express.json());
+app.use(apiRateLimit);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
-app.use('/api/communities', communityRouter(db));
-app.use('/api/content', contentRouter(db));
+app.use('/api/communities', communityRouter(db, { privyService }));
+app.use('/api/content', contentRouter(db, { privyService }));
 app.use('/api/link', linkRouter(db));
 app.use('/api/analytics', analyticsRouter(db));
 
 app.listen(PORT, () => console.log(`[api] Sorts backend running on :${PORT}`));
 
 // ── Telegram Bot ──────────────────────────────────────────────────────────────
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const BOT_TOKEN = env.TELEGRAM_BOT_TOKEN;
 if (BOT_TOKEN) {
   const bot = new Bot(BOT_TOKEN);
 

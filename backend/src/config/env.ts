@@ -1,0 +1,104 @@
+import { z } from 'zod';
+
+/**
+ * Single source of truth for backend environment configuration.
+ *
+ * Validation runs once at startup. Failures throw before the HTTP server
+ * binds, so a misconfigured deployment fails fast rather than serving
+ * 500s on every request.
+ *
+ * Optional Phase-2 fields stay optional until the corresponding service
+ * lands; their absence does not crash the server.
+ */
+const EnvSchema = z.object({
+  // Runtime
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  PORT: z.coerce.number().int().positive().default(3001),
+  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+  DATABASE_PATH: z.string().min(1).default('./data/sorts.db'),
+
+  // Phase 1 — Arbitrum legacy adapter (kept buildable)
+  ARBITRUM_SEPOLIA_RPC_URL: z.string().url().optional(),
+  SORTS_FACTORY_ADDRESS: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/u, 'must be a 0x-prefixed 20-byte hex address')
+    .optional(),
+
+  // Phase 2 — Solana primary chain
+  SOLANA_DEVNET_RPC_URL: z.string().url().optional(),
+  SOLANA_PROGRAM_ID: z
+    .string()
+    .min(32, 'must be a base58 program id')
+    .max(64, 'must be a base58 program id')
+    .optional(),
+
+  // Phase 2 — Privy server-side identity verification
+  PRIVY_APP_ID: z.string().min(1).optional(),
+  PRIVY_APP_SECRET: z.string().min(1).optional(),
+
+  // Phase 2 — Umbra Privacy SDK
+  UMBRA_NETWORK: z.enum(['solana-devnet', 'solana-mainnet']).default('solana-devnet'),
+  UMBRA_INDEXER_URL: z.string().url().optional(),
+
+  // Phase 2 — IKA dWallet pre-alpha
+  IKA_API_URL: z.string().url().optional(),
+
+  // Telegram
+  TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
+
+  // iExec DataProtector (optional content protection)
+  IEXEC_PRIVATE_KEY: z.string().optional(),
+  IEXEC_SORTS_IAPP_ADDRESS: z.string().optional(),
+
+  // Feature flags — default conservative
+  ENABLE_SOLANA_PHASE2: z.coerce.boolean().default(true),
+  ENABLE_UMBRA_ENCRYPTED_BALANCES: z.coerce.boolean().default(false),
+  ENABLE_UMBRA_MIXER: z.coerce.boolean().default(false),
+  ENABLE_IKA_DWALLET: z.coerce.boolean().default(false),
+  ENABLE_IKA_REAL_FUNDS: z.coerce.boolean().default(false),
+  ENABLE_REAL_FHE: z.coerce.boolean().default(false),
+  ENABLE_REAL_MPC_SIGNING: z.coerce.boolean().default(false),
+});
+
+export type Env = z.infer<typeof EnvSchema>;
+
+let cachedEnv: Env | null = null;
+
+export function loadEnv(): Env {
+  if (cachedEnv) return cachedEnv;
+
+  const parsed = EnvSchema.safeParse(process.env);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('\n');
+    throw new Error(
+      `Invalid backend environment configuration:\n${issues}\n` +
+        'Copy backend/.env.example to backend/.env and fill the required values.',
+    );
+  }
+
+  cachedEnv = parsed.data;
+
+  // Operator visibility for silent fallbacks
+  if (!cachedEnv.TELEGRAM_BOT_TOKEN) {
+    console.warn('[env] TELEGRAM_BOT_TOKEN not set — Telegram bot will be disabled.');
+  }
+  if (cachedEnv.NODE_ENV === 'production' && !cachedEnv.PRIVY_APP_ID) {
+    console.warn(
+      '[env] PRIVY_APP_ID not set in production — protected routes cannot verify identity.',
+    );
+  }
+  if (
+    cachedEnv.ENABLE_IKA_REAL_FUNDS ||
+    cachedEnv.ENABLE_REAL_FHE ||
+    cachedEnv.ENABLE_REAL_MPC_SIGNING
+  ) {
+    console.warn(
+      '[env] A "real-funds" or "real-crypto-primitive" feature flag is enabled. ' +
+        'This is not the safe default — confirm this is intended.',
+    );
+  }
+
+  return cachedEnv;
+}

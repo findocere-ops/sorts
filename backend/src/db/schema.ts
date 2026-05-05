@@ -114,6 +114,17 @@ export function runMigrations(db: Database.Database): void {
       content_count     INTEGER NOT NULL DEFAULT 0,
       cached_at         TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Signature replay protection. Each (nonce, wallet) is single-use within
+    -- the TTL window (5 min by default). Cleanup happens lazily via the
+    -- middleware on every request, so this table stays small.
+    CREATE TABLE IF NOT EXISTS nonces (
+      nonce       TEXT NOT NULL,
+      wallet      TEXT NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      PRIMARY KEY (nonce, wallet)
+    );
+    CREATE INDEX IF NOT EXISTS idx_nonces_expires_at ON nonces(expires_at);
   `);
 
   // Run additive migrations for columns added after initial release
