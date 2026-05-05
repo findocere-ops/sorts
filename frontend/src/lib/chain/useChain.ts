@@ -67,7 +67,12 @@ export function getExplorerAddressUrl(address: string): string {
   return `${EXPLORER_BASE_URL}/address/${address}`;
 }
 
-export function useChain() {
+/** Legacy Arbitrum-Sepolia implementation. The chain-aware `useChain()`
+ *  factory below picks this when `?chain=arbitrum-sepolia` is set; default is
+ *  Solana. Existing call sites that need Arbitrum-specific fields
+ *  (factoryConfigured, paymentTokenLabel, approveUsdc, etc.) should call
+ *  `useLegacyArbitrumChain()` directly. */
+export function useLegacyArbitrumChain() {
   const { address } = useSortsAccount();
   const chainId = useSortsChainId();
   const { switchChain } = useSortsSwitchChain();
@@ -209,11 +214,11 @@ export function useChain() {
     setError(null);
 
     try {
-      assertReadyForMembershipWrite(input.communityAddress);
+      assertReadyForMembershipWrite(input.communityAddress as Address);
       setTransactionState('awaiting-signature');
 
       const hash = await writeContractAsync({
-        address: input.communityAddress,
+        address: input.communityAddress as Address,
         abi: membershipAbi,
         functionName: 'subscribe',
         args: [input.tier],
@@ -235,11 +240,11 @@ export function useChain() {
     setError(null);
 
     try {
-      assertReadyForMembershipWrite(input.communityAddress);
+      assertReadyForMembershipWrite(input.communityAddress as Address);
       setTransactionState('awaiting-signature');
 
       const hash = await writeContractAsync({
-        address: input.communityAddress,
+        address: input.communityAddress as Address,
         abi: membershipAbi,
         functionName: 'renewSubscription',
       });
@@ -351,4 +356,34 @@ function parseCommunityCreatedEvent(receipt: TransactionReceipt, factoryAddress:
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return 'Transaction failed.';
+}
+
+// ── Chain-aware factory (Day 3) ──────────────────────────────────────────────
+//
+// Default chain: solana-devnet. Legacy Arbitrum is reachable via
+// `?chain=arbitrum-sepolia` or via a community whose metadata records that
+// chain id. Existing call sites that destructure Arbitrum-specific fields
+// (factoryConfigured, paymentTokenLabel, approveUsdc, getUsdcAddress, etc.)
+// should switch to `useLegacyArbitrumChain()` directly. The new factory
+// returns the chain-agnostic `ChainAdapter` shape.
+
+import { useSearchParams } from 'next/navigation';
+import { resolveChainId } from './chains';
+import type { ChainAdapter, ChainAdapterId } from './types';
+import { useArbitrumChainAdapter } from './adapters/ArbitrumChainAdapter';
+import { useSolanaChainAdapter } from './adapters/SolanaChainAdapter';
+
+export function resolveActiveChainId(query: URLSearchParams | null): ChainAdapterId {
+  return resolveChainId(query?.get('chain') ?? null);
+}
+
+/** Pick a chain adapter based on the `?chain=` query string (default
+ *  `solana-devnet`). Both adapter hooks are called unconditionally to satisfy
+ *  the React rules-of-hooks; only the picked one is returned. */
+export function useChain(): ChainAdapter {
+  const searchParams = useSearchParams();
+  const active = resolveActiveChainId(searchParams);
+  const solana = useSolanaChainAdapter();
+  const arbitrum = useArbitrumChainAdapter();
+  return active === 'arbitrum-sepolia' ? arbitrum : solana;
 }

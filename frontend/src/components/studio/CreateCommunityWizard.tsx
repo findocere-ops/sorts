@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { createCommunityMetadata, creatorActionMessage } from '@/lib/api/communities';
 import type { TierLevel } from '@/lib/chain/types';
-import { ARBITRUM_SEPOLIA_CHAIN_ID, useChain } from '@/lib/chain/useChain';
+import { useChain } from '@/lib/chain/useChain';
 import { useSortsSignMessage } from '@/components/providers/PrivyProvider';
 import { formatUsdc, parseUsdc } from '@/lib/chain/usdc';
+import { CHAINS } from '@/lib/chain/chains';
 import {
   DEFAULT_TIERS,
   type BasicsDraft,
@@ -39,8 +40,10 @@ const initialDraft: CreateCommunityDraft = {
 };
 
 export function CreateCommunityWizard() {
-  const { address, createCommunity, transactionState } = useChain();
+  const adapter = useChain();
+  const { address, createCommunity, transactionState, chain } = adapter;
   const { signMessageAsync } = useSortsSignMessage();
+  const chainEntry = CHAINS[chain];
   const [draft, setDraft] = useState<CreateCommunityDraft>(initialDraft);
   const [stepIndex, setStepIndex] = useState(0);
   const [deployError, setDeployError] = useState<string | null>(null);
@@ -83,9 +86,20 @@ export function CreateCommunityWizard() {
     setDeployError(null);
 
     try {
+      // On Solana, the wizard's tier price input is rendered as decimal SOL.
+      // Convert to lamports (1 SOL = 1e9 lamports). On EVM, USDC base units (6 dec).
+      const parsePrice = (raw: string): bigint => {
+        if (chain === 'solana-devnet') {
+          const n = Number(raw);
+          if (!Number.isFinite(n) || n < 0) return 0n;
+          return BigInt(Math.round(n * 1_000_000_000));
+        }
+        return parseUsdc(raw);
+      };
+
       const tierInputs = draft.tiers.map((tier) => ({
         level: tier.id,
-        priceWei: parseUsdc(tier.price),
+        priceWei: parsePrice(tier.price),
         durationSeconds: BigInt(tier.durationDays.trim()) * 86400n,
       }));
 
@@ -96,13 +110,14 @@ export function CreateCommunityWizard() {
       });
 
       if (!result.contractAddress) {
-        throw new Error('Community deployment confirmed, but the membership contract address was not found in the transaction logs.');
+        throw new Error('Community deployment confirmed, but the community account address was not found.');
       }
 
       const creatorSig = await signMessageAsync({
         message: creatorActionMessage(result.contractAddress, address),
       });
 
+      const symbolLabel = chainEntry.nativeCurrency.label;
       await createCommunityMetadata({
         contractAddress: result.contractAddress,
         name: draft.name.trim(),
@@ -110,15 +125,20 @@ export function CreateCommunityWizard() {
         description: draft.description.trim(),
         category: draft.category,
         creatorWallet: address,
-        chainId: ARBITRUM_SEPOLIA_CHAIN_ID,
+        // Backend treats the chainId field opaquely — pass the discriminator string.
+        // The legacy Arbitrum path still records the EVM numeric id when set.
+        chainId: chain,
         isInstitution: false,
         tiers: draft.tiers.map((tier) => {
-          const price = parseUsdc(tier.price);
+          const price = parsePrice(tier.price);
           return {
             level: tier.id as TierLevel,
             name: tier.name.trim(),
             priceWei: price.toString(),
-            priceDisplay: `${formatUsdc(price)} USDC`,
+            priceDisplay:
+              chain === 'solana-devnet'
+                ? `${tier.price} ${symbolLabel}`
+                : `${formatUsdc(price)} USDC`,
             durationDays: Number(tier.durationDays.trim()),
           };
         }),
