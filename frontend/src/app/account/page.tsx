@@ -2,6 +2,9 @@
 import { AppShell } from '@/components/layout/AppShell';
 import { useSortsPrivy, useSortsWallets } from '@/components/providers/PrivyProvider';
 import { Button } from '@/components/ui/Button';
+import { SignerCapabilitiesCard } from '@/components/wallet/SignerCapabilitiesCard';
+import { MultichainAssetPanel } from '@/components/wallet/MultichainAssetPanel';
+import { MessageApprovalLifecycle } from '@/components/wallet/MessageApprovalLifecycle';
 
 export default function AccountPage() {
   const { ready, authenticated, login, logout, user, linkEmail, linkWallet } = useSortsPrivy();
@@ -94,6 +97,15 @@ export default function AccountPage() {
           <Row label="Status">
             <span style={{ fontSize: 13, color: 'var(--text-3)' }}>Not linked — use the /start command in the Sorts bot to link</span>
           </Row>
+        </Section>
+
+        {/* IKA dWallet (pre-alpha) */}
+        <Section title="IKA dWallet">
+          <div style={{ padding: 12, display: 'grid', gap: 12 }}>
+            <SignerCapabilitiesCard />
+            <MultichainAssetPanel />
+            <MessageApprovalLifecycle current="prepared" />
+          </div>
         </Section>
 
         {/* Privacy */}
