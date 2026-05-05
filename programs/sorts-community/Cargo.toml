@@ -1,0 +1,30 @@
+[package]
+name = "sorts-community"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "SORTS private subscription rails — Solana program (Quasar)"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "sorts_community"
+
+[features]
+default = []
+alloc = []
+client = []
+debug = []
+no-entrypoint = []
+test-bpf = []
+idl-build = []
+
+# Pinned to a Quasar revision verified against this scaffold's API surface.
+# Update only after re-running `cargo check` and the integration test suite.
+[dependencies]
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "6f452a89d3efccb755f0df163f8bed68b8f65c52", package = "quasar-lang" }
+quasar-derive = { git = "https://github.com/blueshift-gg/quasar", rev = "6f452a89d3efccb755f0df163f8bed68b8f65c52", package = "quasar-derive" }
+solana-address = { version = "2.5.0", default-features = false, features = ["copy", "sha2"] }
+
+# Standalone workspace — detaches this crate from any parent Cargo.toml that
+# might claim it (the SORTS root has its own programs/ directory under main).
+[workspace]

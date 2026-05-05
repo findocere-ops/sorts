@@ -1,0 +1,12 @@
+{
+  "cluster": "devnet",
+  "program_id": "AEp6VuJqfctTRQpZP3LDjKcua4C1jGP8YT721AMSBkFV",
+  "deploy_tx": "35DuttPygcc46fZSfmXfwTvV1TAWDNqGfEJ68Cv5vKjb48JKDx8zMcwu2N2XaeRhwvSh8HDsfGEmPNUYBwWSEg6t",
+  "upgrade_tx": "3ZAy85doesf3k465AjcV7195VTmUnzg2QeaKgkgE2keJVtYYU3tzbS1XTLKSFdsKUivuqs7Zfdo4XYm8wSvJtAs7",
+  "deployed_at": "2026-05-04T16:02:52Z",
+  "protocol_treasury": "8z2PLCHhGwGU8PHQd1zByD64E4CeZaQuF2NBy3jrdssf",
+  "deployer": "2hbt2arr3D7S6A3jkfbT5cJ2se19TBAPuuXJ48yiBATQ",
+  "build_method": "cargo build-sbf",
+  "deploy_method": "solana program deploy",
+  "notes": "quasar-cli build/test return opaque 'Anyhow error'; underlying framework macros work — built via cargo build-sbf and deployed via solana CLI. See README cut-line decision."
+}
