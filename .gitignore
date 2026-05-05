@@ -29,3 +29,4 @@ programs/*/keys/*.json
 programs/**/Cargo.lock
 .anchor/
 *.idl
+public/demo-screenshots/*.png
