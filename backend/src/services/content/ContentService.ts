@@ -182,6 +182,16 @@ export class ContentService {
     return community?.contract_address ?? null;
   }
 
+  /** Returns the community's chain_id ('arbitrum-sepolia' | 'solana-devnet' | etc.).
+   *  Used by route handlers to pick the right IChainService implementation
+   *  for the per-community access check. */
+  getCommunityChain(communityId: string): string | null {
+    const row = this.db.prepare(
+      'SELECT chain_id FROM communities WHERE id = ?'
+    ).get(communityId) as { chain_id: string } | undefined;
+    return row?.chain_id ?? null;
+  }
+
   isProtected(post: ContentRow): boolean {
     return Boolean(post.protected_data_address) || post.protection_status === 'protected';
   }

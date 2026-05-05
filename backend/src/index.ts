@@ -7,8 +7,10 @@ import { communityRouter } from './api/routes/community';
 import { analyticsRouter } from './api/routes/analytics';
 import { contentRouter } from './api/routes/content';
 import { linkRouter } from './api/routes/link';
+import { privacyRouter } from './api/routes/privacy';
 import { apiRateLimit } from './api/middleware/rate-limit';
 import { PrivyService } from './services/wallet/PrivyService';
+import { UmbraPrivacyService } from './services/chain/UmbraPrivacyService';
 import { startHandler } from './bot/commands/start';
 import { statusHandler } from './bot/commands/status';
 import { contentHandler } from './bot/commands/content';
@@ -43,10 +45,16 @@ app.use(express.json());
 app.use(apiRateLimit);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+// Day-4 privacy compute service. Cut-line fallback: derives entitlement from
+// the on-chain Subscription PDA's commitment (UmbraPrivacyService keeps the
+// "Umbra" symbol so the v2 swap is a one-line change).
+const privacyService = new UmbraPrivacyService();
+
 app.use('/api/communities', communityRouter(db, { privyService }));
 app.use('/api/content', contentRouter(db, { privyService }));
 app.use('/api/link', linkRouter(db));
 app.use('/api/analytics', analyticsRouter(db));
+app.use('/api/privacy', privacyRouter(privacyService));
 
 app.listen(PORT, () => console.log(`[api] Sorts backend running on :${PORT}`));
 

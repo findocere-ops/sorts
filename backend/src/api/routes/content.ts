@@ -23,6 +23,23 @@ export function contentRouter(db: Database, deps: RouterDeps = { privyService: n
   const ownsCreatorWallet = deps.privyService ? requireWalletOwner('creatorWallet') : passThrough;
   const replayGuard = sigNonce(db);
 
+  // Resolve the per-community chain service. For Solana communities the
+  // access check goes through SolanaService.checkAccess (Day 2), which keeps
+  // privacy invariants — never returns a tier or member count.
+  function chainForCommunity(communityId: string) {
+    const chainId = svc.getCommunityChain(communityId) ?? 'arbitrum-sepolia';
+    return ChainServiceFactory.forChain(chainId);
+  }
+  async function verifyTierAccessForCommunity(
+    communityId: string,
+    contractAddress: string,
+    wallet: string,
+    tierRequired: 1 | 2 | 3,
+  ): Promise<boolean> {
+    const adapter = chainForCommunity(communityId);
+    return adapter.checkAccess(contractAddress, wallet, tierRequired);
+  }
+
   // GET /api/content/:communityId
   // Public callers receive metadata only. Members can include wallet+signature
   // to receive plaintext bodies for posts their tier can access.
@@ -64,7 +81,7 @@ export function contentRouter(db: Database, deps: RouterDeps = { privyService: n
       }
 
       const readable = await Promise.all(posts.map(async (post) => {
-        const hasAccess = await svc.verifyTierAccess(contractAddress, wallet, post.tier_required as 1 | 2 | 3);
+        const hasAccess = await verifyTierAccessForCommunity(communityId, contractAddress, wallet, post.tier_required as 1 | 2 | 3);
         return hasAccess ? unlockMetadata(post) : lockPost(post);
       }));
 
@@ -116,7 +133,7 @@ export function contentRouter(db: Database, deps: RouterDeps = { privyService: n
         return res.status(404).json({ success: false, error: 'Community not found' });
       }
 
-      const hasAccess = await svc.verifyTierAccess(contractAddress, wallet, post.tier_required as 1 | 2 | 3);
+      const hasAccess = await verifyTierAccessForCommunity(communityId, contractAddress, wallet, post.tier_required as 1 | 2 | 3);
       if (!hasAccess) {
         return res.status(403).json({ success: false, error: 'Membership or tier insufficient', data: lockPost(post) });
       }
