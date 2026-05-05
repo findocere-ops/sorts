@@ -4,7 +4,24 @@ import fs from 'fs';
 
 const DB_PATH = process.env.DATABASE_PATH ?? './data/sorts.db';
 
+/** Picks the active driver. Returns `'postgres'` when `DATABASE_URL` is set,
+ *  otherwise `'sqlite'`. Documented in `docs/INFRASTRUCTURE.md` as the
+ *  rollback handle: clear `DATABASE_URL` to fall back to SQLite + Render
+ *  Persistent Disk. */
+export function selectDriver(): 'sqlite' | 'postgres' {
+  return process.env.DATABASE_URL ? 'postgres' : 'sqlite';
+}
+
 export function openDb(): Database.Database {
+  if (selectDriver() === 'postgres') {
+    // The Postgres adapter mirrors the better-sqlite3 surface
+    // (`prepare(...).all/get/run` + `exec` + `pragma` no-op + `close`).
+    // We cast through `unknown` because better-sqlite3's full Database
+    // type carries surface our app does not consume.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { openPostgres } = require('./postgres') as typeof import('./postgres');
+    return openPostgres() as unknown as Database.Database;
+  }
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');

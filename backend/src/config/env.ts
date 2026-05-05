@@ -16,6 +16,9 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
   DATABASE_PATH: z.string().min(1).default('./data/sorts.db'),
+  // Day 7: managed Postgres URL. When set, the DAL switches to the pg
+  // driver via `selectDriver()`. Production deploys MUST set this.
+  DATABASE_URL: z.string().url().optional(),
 
   // Phase 1 — Arbitrum legacy adapter (kept buildable)
   ARBITRUM_SEPOLIA_RPC_URL: z.string().url().optional(),
@@ -58,6 +61,15 @@ const EnvSchema = z.object({
   ENABLE_IKA_REAL_FUNDS: z.coerce.boolean().default(false),
   ENABLE_REAL_FHE: z.coerce.boolean().default(false),
   ENABLE_REAL_MPC_SIGNING: z.coerce.boolean().default(false),
+}).superRefine((env, ctx) => {
+  // Production must use managed Postgres; SQLite is local-dev only.
+  if (env.NODE_ENV === 'production' && !env.DATABASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['DATABASE_URL'],
+      message: 'DATABASE_URL is required when NODE_ENV=production',
+    });
+  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;
