@@ -15,7 +15,7 @@ const MAX_NONCE_LEN = 256;
  *    - First time we see `(nonce, wallet)`: insert into `nonces` with
  *      `expires_at = now + 5 min`, then `next()`.
  *    - Replay (same `(nonce, wallet)` already present and not expired):
- *      respond 409 Conflict.
+ *      respond 401 Unauthorized — the signature has been redeemed.
  *    - Missing nonce/wallet on a route that uses this middleware: 400.
  *    - Expired rows are garbage-collected lazily on every call.
  */
@@ -60,10 +60,12 @@ export function sigNonce(db: Database) {
     try {
       insertStmt.run(nonce, wallet, nowSec + NONCE_TTL_SECS);
     } catch (err) {
-      // SQLITE_CONSTRAINT_PRIMARYKEY → replay
+      // SQLITE_CONSTRAINT_PRIMARYKEY → replay. Treated as an authentication
+      // failure (the signature was already redeemed once and is no longer
+      // valid for a new request), not a body conflict.
       const e = err as { code?: string; message?: string };
       if (e.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || (e.message ?? '').includes('UNIQUE')) {
-        res.status(409).json({ success: false, error: 'Nonce already used' });
+        res.status(401).json({ success: false, error: 'Nonce already used' });
         return;
       }
       throw err;

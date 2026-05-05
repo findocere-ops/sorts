@@ -2,7 +2,7 @@
  * Signature replay protection — sigNonce middleware tests.
  *
  * Uses an in-memory better-sqlite3 instance (`:memory:`). Asserts:
- *   - First (nonce, wallet) submission passes; second is rejected with 409.
+ *   - First (nonce, wallet) submission passes; second is rejected with 401.
  *   - Different wallets can use the same nonce string (key is composite).
  *   - Expired entries are GC'd lazily so the same nonce becomes reusable.
  *   - Missing nonce or wallet returns 400.
@@ -59,7 +59,7 @@ describe('sigNonce middleware', () => {
     expect(row).toBeDefined();
   });
 
-  it('rejects a replay of the same (nonce, wallet) with 409', () => {
+  it('rejects a replay of the same (nonce, wallet) with 401 (t5)', () => {
     const next1 = nextSpy();
     mw(fakeReq({ headers: { 'x-nonce': 'n1', 'x-signing-wallet': '0xAA' } }), fakeRes(), next1);
     expect(next1).toHaveBeenCalled();
@@ -68,7 +68,7 @@ describe('sigNonce middleware', () => {
     const res2 = fakeRes();
     mw(fakeReq({ headers: { 'x-nonce': 'n1', 'x-signing-wallet': '0xAA' } }), res2, next2);
     expect(next2).not.toHaveBeenCalled();
-    expect(res2._status).toBe(409);
+    expect(res2._status).toBe(401);
     expect((res2._body as { error: string }).error).toMatch(/already used/i);
   });
 
@@ -77,7 +77,7 @@ describe('sigNonce middleware', () => {
     const next2 = nextSpy();
     const res2 = fakeRes();
     mw(fakeReq({ headers: { 'x-nonce': 'n1', 'x-signing-wallet': '0xaa' } }), res2, next2);
-    expect(res2._status).toBe(409);
+    expect(res2._status).toBe(401);
     expect(next2).not.toHaveBeenCalled();
   });
 
