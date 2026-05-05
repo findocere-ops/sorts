@@ -6,6 +6,8 @@ import { DataProtectorContentService } from '../../services/content/DataProtecto
 import { contentReadMessage, creatorActionMessage, verifyContentReadProof, verifyCreatorProof } from '../walletProof';
 import { privyAuth, requireWalletOwner } from '../middleware/auth';
 import { sigNonce } from '../middleware/sig-nonce';
+import { previewQuota } from '../middleware/preview-quota';
+import { PreviewQuotaService } from '../../services/community/preview-quota';
 import type { PrivyService } from '../../services/wallet/PrivyService';
 
 const dataProtector = new DataProtectorContentService();
@@ -22,6 +24,8 @@ export function contentRouter(db: Database, deps: RouterDeps = { privyService: n
   const auth = deps.privyService ? privyAuth(deps.privyService) : passThrough;
   const ownsCreatorWallet = deps.privyService ? requireWalletOwner('creatorWallet') : passThrough;
   const replayGuard = sigNonce(db);
+  const previewQuotaSvc = new PreviewQuotaService(db);
+  const previewQuotaGate = previewQuota(previewQuotaSvc);
 
   // Resolve the per-community chain service. For Solana communities the
   // access check goes through SolanaService.checkAccess (Day 2), which keeps
@@ -42,8 +46,10 @@ export function contentRouter(db: Database, deps: RouterDeps = { privyService: n
 
   // GET /api/content/:communityId
   // Public callers receive metadata only. Members can include wallet+signature
-  // to receive plaintext bodies for posts their tier can access.
-  router.get('/:communityId', async (req: Request, res: Response) => {
+  // to receive plaintext bodies for posts their tier can access. Non-members
+  // get only `preview_eligible` posts unlocked; the preview-quota middleware
+  // caps the unique-community footprint at PREVIEW_QUOTA_LIMIT per 7 days.
+  router.get('/:communityId', previewQuotaGate, async (req: Request, res: Response) => {
     try {
       const communityId = req.params.communityId;
       const wallet = typeof req.query.wallet === 'string' ? req.query.wallet : null;
@@ -80,12 +86,37 @@ export function contentRouter(db: Database, deps: RouterDeps = { privyService: n
         return res.status(404).json({ success: false, error: 'Community not found' });
       }
 
-      const readable = await Promise.all(posts.map(async (post) => {
-        const hasAccess = await verifyTierAccessForCommunity(communityId, contractAddress, wallet, post.tier_required as 1 | 2 | 3);
-        return hasAccess ? unlockMetadata(post) : lockPost(post);
-      }));
+      // Single up-front access check. Solana communities never return tier;
+      // EVM honours requiredTier per post.
+      const hasMembership = await verifyTierAccessForCommunity(
+        communityId,
+        contractAddress,
+        wallet,
+        1,
+      );
+      if (hasMembership) {
+        // Active member: free quota slot for this community + return full
+        // metadata with body unlocked per post on subsequent /:postId reads.
+        previewQuotaSvc.release({ wallet }, communityId);
+        const readable = await Promise.all(posts.map(async (post) => {
+          const ok = await verifyTierAccessForCommunity(
+            communityId,
+            contractAddress,
+            wallet,
+            post.tier_required as 1 | 2 | 3,
+          );
+          return ok ? unlockMetadata(post) : lockPost(post);
+        }));
+        return res.json({ success: true, data: readable });
+      }
 
-      res.json({ success: true, data: readable });
+      // Non-member: only preview_eligible posts get the unlock signal; every
+      // other post stays locked. Quota slot was reserved by the middleware.
+      const previewOnly = posts.map((post) => {
+        if (post.preview_eligible) return unlockMetadata(post);
+        return lockPost(post);
+      });
+      res.json({ success: true, data: previewOnly });
     } catch {
       res.status(500).json({ success: false, error: 'Failed to fetch content' });
     }
@@ -275,6 +306,7 @@ function serializePost(post: Omit<ContentRow, 'body'> | ContentRow, opts: { incl
     tier_required: post.tier_required,
     pinned: post.pinned,
     published: post.published,
+    preview_eligible: Boolean(post.preview_eligible),
     likes_count: post.likes_count,
     comments_count: post.comments_count,
     created_at: post.created_at,

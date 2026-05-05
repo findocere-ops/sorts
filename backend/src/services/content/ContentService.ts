@@ -14,6 +14,9 @@ export interface ContentRow {
   tier_required: number;
   pinned: number;
   published: number;
+  /** Day-5: when 1, the post body is unlocked for non-members under the
+   *  preview-quota cap. Default 0 (locked). */
+  preview_eligible: number;
   likes_count: number;
   comments_count: number;
   created_at: string;
@@ -31,8 +34,11 @@ export const CreatePostSchema = z.object({
   contentType: z.enum(['post', 'report', 'signal', 'event', 'announcement']).default('post'),
   tierRequired: z.number().int().min(1).max(3).default(1),
   pinned: z.boolean().default(false),
+  previewEligible: z.boolean().default(false),
   protectWithDataProtector: z.boolean().default(false),
-  creatorWallet: z.string().startsWith('0x'),
+  // Both 0x EVM addresses and base58 Solana pubkeys are accepted; the route
+  // layer routes per-community, so the format is validated downstream.
+  creatorWallet: z.string().min(1),
 });
 
 export const UpdatePostSchema = CreatePostSchema.partial().omit({ creatorWallet: true, protectWithDataProtector: true });
@@ -54,7 +60,7 @@ export class ContentService {
     return this.db.prepare(`
       SELECT
         id, community_id, creator_wallet, title, content_type, tier_required,
-        pinned, published, likes_count, comments_count, created_at, updated_at,
+        pinned, published, preview_eligible, likes_count, comments_count, created_at, updated_at,
         protected_data_address, protected_data_name, protection_provider, iapp_address, protection_status
       FROM content
       WHERE community_id = ? AND published = 1
@@ -113,10 +119,10 @@ export class ContentService {
     this.db.prepare(`
       INSERT INTO content (
         id, community_id, creator_wallet, title, body, content_type, tier_required,
-        pinned, published, protected_data_address, protected_data_name,
+        pinned, preview_eligible, published, protected_data_address, protected_data_name,
         protection_provider, iapp_address, protection_status
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
     `).run(
       id,
       communityId,
@@ -126,6 +132,7 @@ export class ContentService {
       input.contentType,
       input.tierRequired,
       input.pinned ? 1 : 0,
+      input.previewEligible ? 1 : 0,
       protectedContent?.encryptedRef ?? null,
       protectedContent?.protectedDataName ?? null,
       protectedContent?.protectionProvider ?? 'none',
@@ -143,6 +150,7 @@ export class ContentService {
     if (input.body !== undefined) { sets.push('body = ?'); values.push(input.body); }
     if (input.tierRequired !== undefined) { sets.push('tier_required = ?'); values.push(input.tierRequired); }
     if (input.pinned !== undefined) { sets.push('pinned = ?'); values.push(input.pinned ? 1 : 0); }
+    if (input.previewEligible !== undefined) { sets.push('preview_eligible = ?'); values.push(input.previewEligible ? 1 : 0); }
     if (input.contentType !== undefined) { sets.push('content_type = ?'); values.push(input.contentType); }
 
     if (sets.length === 0) return false;

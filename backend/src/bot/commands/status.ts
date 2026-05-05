@@ -3,19 +3,14 @@ import { WalletService } from '../../services/wallet/WalletService';
 import { ChainServiceFactory } from '../../services/chain/ChainServiceFactory';
 import type { Database } from 'better-sqlite3';
 
-/*
- * /status
- *
- * Input:    /status
- * Lookup:   wallet_links by telegram_user_id
- * Chain:    getMembershipStatus(contractAddress, wallet) for each community
- * Success:  list of communities with active / expired status
- * Failure:  wallet not linked → prompt to link
- * Expiry:   shown inline per community with renewal URL
- */
+// Privacy invariants for the /status reply:
+// - NEVER contains the substring "tier" or any tier number (1/2/3).
+// - NEVER includes a community member count.
+// - Per-community chain dispatch routes Solana communities through
+//   SolanaService.getMembershipStatus.
+
 export function statusHandler(db: Database) {
   const walletService = new WalletService(db);
-  const chain = ChainServiceFactory.forChain();
   const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
   return async (ctx: Context) => {
@@ -25,14 +20,14 @@ export function statusHandler(db: Database) {
     const wallet = walletService.getLinkedWallet(telegramId);
     if (!wallet) {
       await ctx.reply(
-        '🔗 No wallet linked.\n\nRun /start to link your wallet and check your memberships.'
+        '🔗 No wallet linked.\n\nRun /start to link your wallet and check your memberships.',
       );
       return;
     }
 
     const communities = db.prepare(
-      'SELECT id, name, contract_address FROM communities ORDER BY name'
-    ).all() as { id: string; name: string; contract_address: string }[];
+      'SELECT id, name, contract_address, chain_id FROM communities ORDER BY name',
+    ).all() as { id: string; name: string; contract_address: string; chain_id: string }[];
 
     if (communities.length === 0) {
       await ctx.reply('No communities exist yet. Discover them at ' + frontendUrl + '/discover');
@@ -44,7 +39,8 @@ export function statusHandler(db: Database) {
 
     for (const c of communities) {
       try {
-        const status = await chain.getMembershipStatus(c.contract_address, wallet);
+        const adapter = ChainServiceFactory.forChain(c.chain_id ?? 'arbitrum-sepolia');
+        const status = await adapter.getMembershipStatus(c.contract_address, wallet);
         if (status.hasAccess) {
           hasAny = true;
           const expStr = status.expiresAt
@@ -53,9 +49,7 @@ export function statusHandler(db: Database) {
           lines.push(`✅ *${c.name}* — active (expires ${expStr})`);
         } else if (status.isExpired) {
           hasAny = true;
-          lines.push(
-            `⚠️ *${c.name}* — expired\nRenew: ${frontendUrl}/join/${c.id}`
-          );
+          lines.push(`⚠️ *${c.name}* — expired\nRenew: ${frontendUrl}/join/${c.id}`);
         }
       } catch {
         // Skip unreachable contracts silently

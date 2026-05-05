@@ -125,6 +125,22 @@ export function runMigrations(db: Database.Database): void {
       PRIMARY KEY (nonce, wallet)
     );
     CREATE INDEX IF NOT EXISTS idx_nonces_expires_at ON nonces(expires_at);
+
+    -- Day-5 preview-quota. Either wallet OR session_token identifies the
+    -- caller; entries older than 7 days are GC'd by the quota service on
+    -- every check, so this table stays small. Privacy: NEVER joined with
+    -- membership_cache or wallet_links in any API response.
+    CREATE TABLE IF NOT EXISTS preview_quota (
+      id            TEXT PRIMARY KEY,
+      wallet        TEXT,
+      session_token TEXT,
+      community_id  TEXT NOT NULL,
+      created_at    INTEGER NOT NULL,
+      UNIQUE(wallet, session_token, community_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_preview_quota_created ON preview_quota(created_at);
+    CREATE INDEX IF NOT EXISTS idx_preview_quota_wallet ON preview_quota(wallet);
+    CREATE INDEX IF NOT EXISTS idx_preview_quota_session ON preview_quota(session_token);
   `);
 
   // Run additive migrations for columns added after initial release
@@ -154,5 +170,10 @@ export function runMigrations(db: Database.Database): void {
   }
   if (!contentInfo.find(c => c.name === 'protection_status')) {
     db.exec("ALTER TABLE content ADD COLUMN protection_status TEXT NOT NULL DEFAULT 'plain'");
+  }
+  // Day-5 — per-post preview marker. Creator toggles this per content row;
+  // the public GET respects it for non-members.
+  if (!contentInfo.find(c => c.name === 'preview_eligible')) {
+    db.exec("ALTER TABLE content ADD COLUMN preview_eligible INTEGER NOT NULL DEFAULT 0");
   }
 }
