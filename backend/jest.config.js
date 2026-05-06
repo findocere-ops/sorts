@@ -10,6 +10,11 @@ module.exports = {
   moduleNameMapper: {
     '^@sorts/shared$': '<rootDir>/../../../packages/shared/src',
     '^@sorts/shared/(.*)$': '<rootDir>/../../../packages/shared/src/$1',
+    // Cross-tree alias used by the encoding round-trip test only — lets the
+    // backend jest runner import the frontend's `instructions.ts` (which
+    // resolves its own internal imports through Next.js's `@/` path alias).
+    // Adding this here is safe because no backend source uses the `@/` shape.
+    '^@/(.*)$': '<rootDir>/../../frontend/src/$1',
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json', isolatedModules: true }],
