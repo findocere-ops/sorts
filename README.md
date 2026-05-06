@@ -78,6 +78,23 @@ The demo should prove one clean path:
 9. Creator sees aggregate stats, not a member wallet list.
 10. IKA dWallet capability appears with pre-alpha warnings.
 
+## Current Demo Status
+
+Honest snapshot of what's actually wired in this build (devnet only).
+
+| Feature | Status | Notes |
+|---|---|---|
+| Solana devnet community creation | ✅ Live | Quasar program on devnet — `AEp6VuJqfctTRQpZP3LDjKcua4C1jGP8YT721AMSBkFV` |
+| Subscriber Solana subscribe + access check | ✅ Live | Devnet only |
+| Aggregate-only creator analytics | ✅ Live | No member lists, ever |
+| Privy auth | ✅ Live | Email + Solana wallet (wallet-adapter for Solana, Privy for identity) |
+| Umbra hidden membership state | 🧪 Experimental / Fallback | Cut-line tripped on Day 4 — see `UmbraMembershipCard` "Umbra v2 in progress" label |
+| IKA dWallet | 🧪 Pre-alpha | Static capability card; real-funds method gated + throws |
+| Telegram delivery | ✅ Live | Bot token gates feature; `/status` reply never includes tier |
+| Mainnet | ❌ Not in scope | Devnet MVP only — Universal Hard Rule |
+
+A site-wide `DisclaimerFooter` (mounted in `frontend/src/app/layout.tsx`) carries the longer-form devnet / no-real-funds / no-production-FHE-or-MPC disclosures on every page.
+
 ## Quick Start
 
 Prerequisites:

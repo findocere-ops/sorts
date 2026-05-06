@@ -2,5 +2,6 @@
 /* tslint:disable */
 /* eslint-disable */
 export * as interfaces from "./interfaces";
+export * as test from "./test";
 export { SortsFactory__factory } from "./SortsFactory__factory";
 export { SortsMembership__factory } from "./SortsMembership__factory";

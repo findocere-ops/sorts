@@ -8,9 +8,9 @@ export const TIER_NAMES: Record<number, string> = {
 };
 
 export const TIER_COLORS: Record<number, string> = {
-  1: '#7880a0',
-  2: '#5b8ef5',
-  3: '#8b5cf6',
+  1: 'var(--text-3)',
+  2: 'var(--cyan)',
+  3: 'var(--purple)',
 };
 
 /** Protocol fee applied to all on-chain subscription revenue: 5% */

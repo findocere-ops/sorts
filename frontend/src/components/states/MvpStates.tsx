@@ -193,17 +193,37 @@ export function BackendNotConnected({ apiUrl, onRetry }: { apiUrl?: string; onRe
   );
 }
 
-export function ContractNotConfigured({ onOpenSetup }: { onOpenSetup?: () => void }) {
+export function ContractNotConfigured({
+  onOpenSetup,
+  chain = 'solana-devnet',
+}: {
+  onOpenSetup?: () => void;
+  chain?: 'solana-devnet' | 'arbitrum-sepolia';
+}) {
+  if (chain === 'arbitrum-sepolia') {
+    return (
+      <EmptyStateShell
+        icon="settings"
+        eyebrow="Contract missing"
+        title="SortsFactory is not configured"
+        body="Deploy the Arbitrum Sepolia factory contract, then add its address to the frontend and backend env files."
+        tone="gold"
+        badge="Legacy"
+        action={onOpenSetup ? { label: 'View setup', onClick: onOpenSetup } : undefined}
+        detail={<span className="t-mono">NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=0x...</span>}
+      />
+    );
+  }
   return (
     <EmptyStateShell
       icon="settings"
-      eyebrow="Contract missing"
-      title="SortsFactory is not configured"
-      body="Deploy the Arbitrum Sepolia factory contract, then add its address to the frontend and backend env files."
+      eyebrow="Program missing"
+      title="Solana program is not configured"
+      body="Deploy the sorts_community Solana program, then set NEXT_PUBLIC_SOLANA_PROGRAM_ID for the frontend and SOLANA_PROGRAM_ID for the backend."
       tone="gold"
-      badge="Deployment"
+      badge="Devnet"
       action={onOpenSetup ? { label: 'View setup', onClick: onOpenSetup } : undefined}
-      detail={<span className="t-mono">NEXT_PUBLIC_SORTS_FACTORY_ADDRESS=0x...</span>}
+      detail={<span className="t-mono">NEXT_PUBLIC_SOLANA_PROGRAM_ID=AEp6...&nbsp;</span>}
     />
   );
 }

@@ -324,7 +324,7 @@ function PrivacyArchitecture() {
           {[
             { t: 'Launch focus', items: ['Solana devnet', 'Privy wallet UX', 'Umbra hidden state', 'IKA dWallet capability'] },
             { t: 'Privacy stance', items: ['No member list', 'Aggregate-only analytics', 'Non-leaky access checks', 'Creator-selected previews'] },
-            { t: 'Adapter history', items: ['Arbitrum USDC contracts', 'Hardhat tests', 'Chain adapter pattern', 'Legacy EVM path intact'] },
+            { t: 'Architecture', items: ['Quasar Solana program', 'Chain adapter pattern', 'Telegram access rail', 'Aggregate-only API surface'] },
           ].map((s, i) => (
             <div key={i}>
               <div className="t-label mb-3">{s.t}</div>
@@ -364,7 +364,7 @@ function FAQSection() {
     },
     {
       q: 'What is the protocol fee?',
-      a: 'The current model targets a subscription take rate for SORTS. Legacy Arbitrum contracts use a 5% protocol fee, while Solana fee routing will be documented as the adapter lands.',
+      a: 'SORTS targets a subscription take rate of 2-5% on creator revenue. The current Solana devnet build documents fee routing alongside the on-chain adapter; final mainnet fee parameters will be locked before public launch.',
     },
     {
       q: 'Is this production-ready?',

@@ -10,10 +10,17 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@sorts/shared": "workspace:*",
+    "@coral-xyz/anchor": "^0.32.1",
     "@privy-io/react-auth": "^1.90.0",
     "@privy-io/wagmi": "^0.2.5",
+    "@solana/wallet-adapter-base": "^0.9.27",
+    "@solana/wallet-adapter-react": "^0.15.39",
+    "@solana/wallet-adapter-react-ui": "^0.9.39",
+    "@solana/wallet-adapter-wallets": "^0.19.38",
+    "@solana/web3.js": "^1.98.4",
+    "@sorts/shared": "workspace:*",
     "@tanstack/react-query": "^5.45.1",
+    "bs58": "^6.0.0",
     "framer-motion": "^11.2.14",
     "next": "14.2.4",
     "react": "^18.3.1",

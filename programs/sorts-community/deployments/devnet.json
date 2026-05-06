@@ -1,0 +1,14 @@
+{
+  "cluster": "devnet",
+  "program_id": "AEp6VuJqfctTRQpZP3LDjKcua4C1jGP8YT721AMSBkFV",
+  "deploy_tx": "35DuttPygcc46fZSfmXfwTvV1TAWDNqGfEJ68Cv5vKjb48JKDx8zMcwu2N2XaeRhwvSh8HDsfGEmPNUYBwWSEg6t",
+  "upgrade_tx_v1": "3ZAy85doesf3k465AjcV7195VTmUnzg2QeaKgkgE2keJVtYYU3tzbS1XTLKSFdsKUivuqs7Zfdo4XYm8wSvJtAs7",
+  "upgrade_tx_v2_pseudonymization": "2nLtw6N5TjHrVGymvxLki6TLTwQ4rcBun2BRXcypX62gH6e271nau4vkj3Q14SCRDMa2rNqdVRWW7Z8KVjYh1xbz",
+  "deployed_at": "2026-05-04T16:02:52Z",
+  "v2_redeployed_at": "2026-05-06T00:00:00Z",
+  "protocol_treasury": "8z2PLCHhGwGU8PHQd1zByD64E4CeZaQuF2NBy3jrdssf",
+  "deployer": "2hbt2arr3D7S6A3jkfbT5cJ2se19TBAPuuXJ48yiBATQ",
+  "build_method": "cargo build-sbf",
+  "deploy_method": "solana program deploy",
+  "notes": "quasar-cli build/test return opaque 'Anyhow error'; underlying framework macros work — built via cargo build-sbf and deployed via solana CLI. v2 introduces subscriber_commitment pseudonymization (Tier 1.2 mitigation, see docs/PRIVACY_REVIEW.md). Devnet state from v1 is intentionally wiped — pre-existing Subscription accounts are no longer deserializable under v2 layout. See programs/sorts-community/README.md for cut-line decisions."
+}

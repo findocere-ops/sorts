@@ -1,0 +1,61 @@
+name: encoding-sync (three-file invariant)
+
+# Runs the byte-level encoding round-trip test whenever a PR touches any
+# file that participates in the three-file synchronization rule:
+#
+#   1. programs/sorts-community/src/state.rs            (account layout)
+#   2. backend/src/services/chain/SolanaService.ts      (decoder)
+#   3. frontend/src/lib/solana/instructions.ts          (ix data builder)
+#
+# Plus the test itself, the discriminator constants, and the jest config
+# that wires the cross-tree alias.
+
+on:
+  pull_request:
+    paths:
+      - 'programs/sorts-community/src/state.rs'
+      - 'programs/sorts-community/src/instructions/**'
+      - 'programs/sorts-community/src/lib.rs'
+      - 'backend/src/services/chain/SolanaService.ts'
+      - 'backend/src/services/chain/idl/types.ts'
+      - 'frontend/src/lib/solana/instructions.ts'
+      - 'frontend/src/lib/solana/idl.ts'
+      - 'frontend/src/lib/solana/program.ts'
+      - 'backend/src/__tests__/encoding-roundtrip.test.ts'
+      - 'backend/jest.config.js'
+      - '.github/workflows/encoding-sync.yml'
+  workflow_dispatch:
+
+jobs:
+  encoding-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies (no native build scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Rebuild better-sqlite3 native binding
+        run: |
+          cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3
+          PATH="$PATH:$(pwd)/../../node_modules/.bin" npm rebuild
+
+      - name: Run encoding round-trip test
+        run: |
+          pnpm --filter @sorts/backend run test \
+            --testPathPattern='encoding-roundtrip'
+
+      - name: Run full backend suite (sanity)
+        run: |
+          pnpm --filter @sorts/backend run test

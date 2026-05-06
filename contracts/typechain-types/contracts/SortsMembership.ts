@@ -50,6 +50,7 @@ export interface SortsMembershipInterface extends Interface {
       | "memberExpiry"
       | "name"
       | "owner"
+      | "paymentToken"
       | "protocolTreasury"
       | "renewSubscription"
       | "renounceOwnership"
@@ -159,6 +160,10 @@ export interface SortsMembershipInterface extends Interface {
   ): string;
   encodeFunctionData(functionFragment: "name", values?: undefined): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "paymentToken",
+    values?: undefined
+  ): string;
   encodeFunctionData(
     functionFragment: "protocolTreasury",
     values?: undefined
@@ -286,6 +291,10 @@ export interface SortsMembershipInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "name", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "paymentToken",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(
     functionFragment: "protocolTreasury",
     data: BytesLike
@@ -583,9 +592,11 @@ export interface SortsMembership extends BaseContract {
 
   owner: TypedContractMethod<[], [string], "view">;
 
+  paymentToken: TypedContractMethod<[], [string], "view">;
+
   protocolTreasury: TypedContractMethod<[], [string], "view">;
 
-  renewSubscription: TypedContractMethod<[], [void], "payable">;
+  renewSubscription: TypedContractMethod<[], [void], "nonpayable">;
 
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
 
@@ -595,7 +606,7 @@ export interface SortsMembership extends BaseContract {
     "nonpayable"
   >;
 
-  subscribe: TypedContractMethod<[tier: BigNumberish], [void], "payable">;
+  subscribe: TypedContractMethod<[tier: BigNumberish], [void], "nonpayable">;
 
   supportsInterface: TypedContractMethod<
     [interfaceId: BytesLike],
@@ -752,11 +763,14 @@ export interface SortsMembership extends BaseContract {
     nameOrSignature: "owner"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
+    nameOrSignature: "paymentToken"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
     nameOrSignature: "protocolTreasury"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "renewSubscription"
-  ): TypedContractMethod<[], [void], "payable">;
+  ): TypedContractMethod<[], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
@@ -769,7 +783,7 @@ export interface SortsMembership extends BaseContract {
   >;
   getFunction(
     nameOrSignature: "subscribe"
-  ): TypedContractMethod<[tier: BigNumberish], [void], "payable">;
+  ): TypedContractMethod<[tier: BigNumberish], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "supportsInterface"
   ): TypedContractMethod<[interfaceId: BytesLike], [boolean], "view">;
