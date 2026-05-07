@@ -30,7 +30,7 @@ use sorts_community::constants::{
     FEE_DENOMINATOR, MAX_TIERS, PROTOCOL_FEE_BPS,
 };
 use sorts_community::logic::{
-    is_active, split_protocol_fee, subscriber_commitment, tier_commitment,
+    is_active, is_zero_64, split_protocol_fee, subscriber_commitment, tier_commitment,
 };
 
 const ONE_DAY: i64 = 60 * 60 * 24;
@@ -325,6 +325,65 @@ fn t8_subscriber_commitment_deterministic_per_pair() {
     let nonce_other: [u8; 32] = [0x55; 32];
     let c_other = subscriber_commitment(&alice, &nonce_other, &program_id);
     assert_ne!(c1, c_other, "different nonces must produce distinct commitments");
+}
+
+// -----------------------------------------------------------------------------
+// t9 — Tier 1.3 dual-path discriminator + source-level invariants
+// -----------------------------------------------------------------------------
+#[test]
+fn t9_cloak_payment_dual_path() {
+    use std::fs;
+    use std::path::PathBuf;
+
+    // 1. The pure logic helper picks the right branch for each input shape.
+    let zero = [0u8; 64];
+    assert!(is_zero_64(&zero), "all-zero sigs => transparent path");
+
+    let mut one_sig = [0u8; 64];
+    one_sig[0] = 0xfe;
+    assert!(!is_zero_64(&one_sig), "single non-zero byte => Cloak path");
+
+    let two_sigs = [0xab; 64];
+    assert!(!is_zero_64(&two_sigs), "fully populated sigs => Cloak path");
+
+    // 2. Both subscribe.rs and renew_subscription.rs gate the
+    // system_program::transfer calls behind `if !cloak_path_active`. We
+    // assert this at the source level so future refactors can't drop the
+    // gate without this test failing.
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    for ix_file in &[
+        "src/instructions/subscribe.rs",
+        "src/instructions/renew_subscription.rs",
+    ] {
+        let path = crate_root.join(ix_file);
+        let src = fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("failed to read {ix_file}"));
+
+        assert!(
+            src.contains("cloak_path_active"),
+            "{ix_file} must use the cloak_path_active dual-path discriminator"
+        );
+        assert!(
+            src.contains("if !cloak_path_active"),
+            "{ix_file} must gate the transparent transfer behind the dual-path check"
+        );
+        assert!(
+            src.contains("cloak_payment_sigs"),
+            "{ix_file} must accept the cloak_payment_sigs ix arg"
+        );
+    }
+
+    // 3. The Subscription state.rs holds the new field; t6 already enforces
+    // no-plaintext-subscriber. Here we explicitly assert the new field is
+    // exactly 64 bytes and named `cloak_payment_sigs` (so the offset 137
+    // assumption in the backend decoder cannot drift).
+    let state_src = fs::read_to_string(crate_root.join("src/state.rs"))
+        .expect("state.rs readable");
+    assert!(
+        state_src.contains("pub cloak_payment_sigs: [u8; 64]"),
+        "Subscription must hold a `pub cloak_payment_sigs: [u8; 64]` field at the v3 offset"
+    );
 }
 
 fn walk(dir: &std::path::Path, out: &mut String) {

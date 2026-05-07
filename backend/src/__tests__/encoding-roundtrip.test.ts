@@ -60,6 +60,12 @@ const TREASURY    = new PublicKey('8z2PLCHhGwGU8PHQd1zByD64E4CeZaQuF2NBy3jrdssf'
 // fixed bytes because the byte-layout assertions here don't replay the derive.
 const SUBSCRIBER_COMMITMENT_BYTES = new Uint8Array(32).fill(0xa5);
 const SUBSCRIBER_NONCE_BYTES      = new Uint8Array(32).fill(0x5a);
+// v3 fixture — Tier 1.3 Cloak dual-path payment-rail signatures. All-zero
+// represents the transparent (devnet) path; non-zero represents Cloak having
+// moved funds off-band. The pattern below is intentionally distinct from
+// other 64-byte slots so a layout drift surfaces in the failing assertion.
+const CLOAK_PAYMENT_SIGS_BYTES    = new Uint8Array(64).fill(0xee);
+const CLOAK_PAYMENT_SIGS_ZERO     = new Uint8Array(64);
 
 const NAME_HASH   = new Uint8Array(32).fill(0xa1);
 const SYMBOL_HASH = new Uint8Array(32).fill(0xb2);
@@ -107,11 +113,13 @@ function buildExpectedCommunityBytes(): Buffer {
 }
 
 function buildExpectedSubscriptionBytes(): Buffer {
-  // v2 layout (subscriber pseudonymization, Tier 1.2 mitigation):
+  // v3 layout (Tier 1.2 pseudonymization + Tier 1.3 Cloak dual-path):
   // disc(1) + community(32) + subscriber_commitment(32) + expiry_ts(8)
-  // + tier_commitment(32) + salt_pubkey(32) + bump(1)  =  138
-  // The plaintext subscriber pubkey is NEVER stored.
-  const data = Buffer.alloc(138);
+  // + tier_commitment(32) + salt_pubkey(32) + cloak_payment_sigs(64)
+  // + bump(1)  =  202
+  // Plaintext subscriber pubkey NEVER stored. cloak_payment_sigs is all-zero
+  // on the transparent payment path; non-zero on the Cloak path.
+  const data = Buffer.alloc(202);
   let off = 0;
   data.writeUInt8(SUBSCRIPTION_DISCRIMINATOR, off); off += 1;
   Buffer.from(COMMUNITY.toBuffer()).copy(data, off); off += 32;
@@ -119,6 +127,7 @@ function buildExpectedSubscriptionBytes(): Buffer {
   data.writeBigInt64LE(1_800_000_000n, off); off += 8;     // expiry_ts
   Buffer.alloc(32, 0xcc).copy(data, off); off += 32;       // tier_commitment
   Buffer.from(SALT_PUBKEY.toBuffer()).copy(data, off); off += 32;
+  Buffer.from(CLOAK_PAYMENT_SIGS_BYTES).copy(data, off); off += 64;
   data.writeUInt8(255, off);                                // bump
   return data;
 }
@@ -186,13 +195,13 @@ describe('Community account round-trip', () => {
   });
 });
 
-describe('Subscription account round-trip', () => {
-  it('decodes a hand-built golden buffer per state.rs', () => {
+describe('Subscription account round-trip (v3 layout)', () => {
+  it('decodes a hand-built v3 golden buffer per state.rs', () => {
     const golden = buildExpectedSubscriptionBytes();
     const decoded = decodeSubscription(golden);
     if (!decoded) {
       syncFail(
-        'decodeSubscription returned null on a hand-built 138-byte buffer.',
+        'decodeSubscription returned null on a hand-built 202-byte buffer.',
         'Likely cause: backend/src/services/chain/SolanaService.ts decoder',
         'expects a different Subscription layout than programs/sorts-community/src/state.rs.',
       );
@@ -212,16 +221,44 @@ describe('Subscription account round-trip', () => {
     if (decoded!.saltPubkey.toBase58() !== SALT_PUBKEY.toBase58()) {
       syncFail('Subscription.salt_pubkey offset drift');
     }
+    if (
+      Buffer.from(decoded!.cloakPaymentSigs).toString('hex') !==
+      Buffer.from(CLOAK_PAYMENT_SIGS_BYTES).toString('hex')
+    ) {
+      syncFail(
+        'Subscription.cloak_payment_sigs offset drift',
+        'Bytes 137..201 of the decoded buffer do not match the golden Cloak sigs pattern.',
+      );
+    }
     if (decoded!.bump !== 255) syncFail('Subscription.bump offset drift');
     // Privacy invariant: decoded shape must NOT include a plaintext level
     // field OR a plaintext subscriber pubkey field (Tier 1.2 mitigation).
     expect(Object.keys(decoded!).sort()).toEqual([
-      'bump', 'community', 'expiryTs', 'saltPubkey', 'subscriberCommitment', 'tierCommitment',
+      'bump', 'cloakPaymentSigs', 'community', 'expiryTs', 'saltPubkey',
+      'subscriberCommitment', 'tierCommitment',
     ]);
   });
 
-  it('rejects buffers shorter than 138 bytes', () => {
-    expect(decodeSubscription(Buffer.alloc(137))).toBeNull();
+  it('rejects pre-v3 buffers shorter than 202 bytes (layout-drift guard)', () => {
+    expect(decodeSubscription(Buffer.alloc(138))).toBeNull();
+    expect(decodeSubscription(Buffer.alloc(201))).toBeNull();
+  });
+
+  it('decodes the all-zero (transparent payment path) cloak sigs slot', () => {
+    const data = Buffer.alloc(202);
+    let off = 0;
+    data.writeUInt8(SUBSCRIPTION_DISCRIMINATOR, off); off += 1;
+    Buffer.from(COMMUNITY.toBuffer()).copy(data, off); off += 32;
+    Buffer.from(SUBSCRIBER_COMMITMENT_BYTES).copy(data, off); off += 32;
+    data.writeBigInt64LE(1_800_000_000n, off); off += 8;
+    Buffer.alloc(32, 0xcc).copy(data, off); off += 32;
+    Buffer.from(SALT_PUBKEY.toBuffer()).copy(data, off); off += 32;
+    Buffer.from(CLOAK_PAYMENT_SIGS_ZERO).copy(data, off); off += 64;
+    data.writeUInt8(254, off);
+
+    const decoded = decodeSubscription(data)!;
+    expect(decoded.cloakPaymentSigs.length).toBe(64);
+    expect(decoded.cloakPaymentSigs.every((b) => b === 0)).toBe(true);
   });
 });
 
@@ -300,8 +337,8 @@ describe('initializeCommunity ix data — frontend builder vs state.rs layout', 
   });
 });
 
-describe('subscribe ix data — frontend builder vs state.rs layout (v2)', () => {
-  it('emits the documented byte layout: disc + level + commitment + nonce + salt', () => {
+describe('subscribe ix data — frontend builder vs state.rs layout (v3)', () => {
+  it('emits the documented byte layout: disc + level + commitment + nonce + salt + cloak_sigs', () => {
     const ix = buildSubscribeIx({
       subscriber: SUBSCRIBER,
       community: COMMUNITY,
@@ -310,12 +347,13 @@ describe('subscribe ix data — frontend builder vs state.rs layout (v2)', () =>
       commitment: SUBSCRIBER_COMMITMENT_BYTES,
       nonce: SUBSCRIBER_NONCE_BYTES,
       saltPubkey: SALT_PUBKEY,
+      cloakPaymentSigs: CLOAK_PAYMENT_SIGS_BYTES,
     });
 
-    // v2 layout: 1 disc + 1 level + 32 commitment + 32 nonce + 32 salt = 98.
-    if (ix.data.length !== 98) {
+    // v3 layout: 1 disc + 1 level + 32 commitment + 32 nonce + 32 salt + 64 cloak_sigs = 162.
+    if (ix.data.length !== 162) {
       syncFail(
-        `subscribe ix data length mismatch: expected 98 (1 disc + 1 level + 32 commitment + 32 nonce + 32 salt), got ${ix.data.length}.`,
+        `subscribe ix data length mismatch: expected 162 (1+1+32+32+32+64), got ${ix.data.length}.`,
       );
     }
     if (ix.data.readUInt8(0) !== IX_SUBSCRIBE) {
@@ -325,6 +363,7 @@ describe('subscribe ix data — frontend builder vs state.rs layout (v2)', () =>
     expect(Array.from(ix.data.subarray(2, 34))).toEqual(Array.from(SUBSCRIBER_COMMITMENT_BYTES));
     expect(Array.from(ix.data.subarray(34, 66))).toEqual(Array.from(SUBSCRIBER_NONCE_BYTES));
     expect(Array.from(ix.data.subarray(66, 98))).toEqual(Array.from(SALT_PUBKEY.toBuffer()));
+    expect(Array.from(ix.data.subarray(98, 162))).toEqual(Array.from(CLOAK_PAYMENT_SIGS_BYTES));
 
     // Account order per programs/sorts-community/src/instructions/subscribe.rs:
     //   subscriber, community, subscription, protocol_treasury, creator,
@@ -343,6 +382,22 @@ describe('subscribe ix data — frontend builder vs state.rs layout (v2)', () =>
     expect(ix.keys[7].pubkey.toBase58()).toBe(SystemProgram.programId.toBase58());
   });
 
+  it('emits an all-zero cloak_payment_sigs slot on the transparent (devnet) path', () => {
+    const ix = buildSubscribeIx({
+      subscriber: SUBSCRIBER,
+      community: COMMUNITY,
+      creator: CREATOR,
+      level: 1,
+      commitment: SUBSCRIBER_COMMITMENT_BYTES,
+      nonce: SUBSCRIBER_NONCE_BYTES,
+      saltPubkey: SALT_PUBKEY,
+      cloakPaymentSigs: CLOAK_PAYMENT_SIGS_ZERO,
+    });
+    expect(ix.data.length).toBe(162);
+    const sigsSlot = ix.data.subarray(98, 162);
+    expect(sigsSlot.every((b) => b === 0)).toBe(true);
+  });
+
   it('refuses level=0 and level=4 (privacy invariant: 1..=3 only)', () => {
     expect(() => buildSubscribeIx({
       subscriber: SUBSCRIBER, community: COMMUNITY, creator: CREATOR,
@@ -350,6 +405,7 @@ describe('subscribe ix data — frontend builder vs state.rs layout (v2)', () =>
       commitment: SUBSCRIBER_COMMITMENT_BYTES,
       nonce: SUBSCRIBER_NONCE_BYTES,
       saltPubkey: SALT_PUBKEY,
+      cloakPaymentSigs: CLOAK_PAYMENT_SIGS_ZERO,
     })).toThrow();
     expect(() => buildSubscribeIx({
       subscriber: SUBSCRIBER, community: COMMUNITY, creator: CREATOR,
@@ -357,16 +413,18 @@ describe('subscribe ix data — frontend builder vs state.rs layout (v2)', () =>
       commitment: SUBSCRIBER_COMMITMENT_BYTES,
       nonce: SUBSCRIBER_NONCE_BYTES,
       saltPubkey: SALT_PUBKEY,
+      cloakPaymentSigs: CLOAK_PAYMENT_SIGS_ZERO,
     })).toThrow();
   });
 
-  it('refuses commitment or nonce of wrong byte length', () => {
+  it('refuses commitment, nonce, or cloak_payment_sigs of wrong byte length', () => {
     expect(() => buildSubscribeIx({
       subscriber: SUBSCRIBER, community: COMMUNITY, creator: CREATOR,
       level: 1,
       commitment: new Uint8Array(31),
       nonce: SUBSCRIBER_NONCE_BYTES,
       saltPubkey: SALT_PUBKEY,
+      cloakPaymentSigs: CLOAK_PAYMENT_SIGS_ZERO,
     })).toThrow();
     expect(() => buildSubscribeIx({
       subscriber: SUBSCRIBER, community: COMMUNITY, creator: CREATOR,
@@ -374,12 +432,21 @@ describe('subscribe ix data — frontend builder vs state.rs layout (v2)', () =>
       commitment: SUBSCRIBER_COMMITMENT_BYTES,
       nonce: new Uint8Array(33),
       saltPubkey: SALT_PUBKEY,
+      cloakPaymentSigs: CLOAK_PAYMENT_SIGS_ZERO,
+    })).toThrow();
+    expect(() => buildSubscribeIx({
+      subscriber: SUBSCRIBER, community: COMMUNITY, creator: CREATOR,
+      level: 1,
+      commitment: SUBSCRIBER_COMMITMENT_BYTES,
+      nonce: SUBSCRIBER_NONCE_BYTES,
+      saltPubkey: SALT_PUBKEY,
+      cloakPaymentSigs: new Uint8Array(63),
     })).toThrow();
   });
 });
 
-describe('renewSubscription ix data — frontend builder vs state.rs layout (v2)', () => {
-  it('emits the documented byte layout: disc + level + commitment + nonce', () => {
+describe('renewSubscription ix data — frontend builder vs state.rs layout (v3)', () => {
+  it('emits the documented byte layout: disc + level + commitment + nonce + cloak_sigs', () => {
     const ix = buildRenewSubscriptionIx({
       subscriber: SUBSCRIBER,
       community: COMMUNITY,
@@ -387,10 +454,11 @@ describe('renewSubscription ix data — frontend builder vs state.rs layout (v2)
       level: 2,
       commitment: SUBSCRIBER_COMMITMENT_BYTES,
       nonce: SUBSCRIBER_NONCE_BYTES,
+      cloakPaymentSigs: CLOAK_PAYMENT_SIGS_BYTES,
     });
-    // v2 layout: 1 disc + 1 level + 32 commitment + 32 nonce = 66.
-    if (ix.data.length !== 66) {
-      syncFail(`renew ix data length mismatch: expected 66 (1 disc + 1 level + 32 commitment + 32 nonce), got ${ix.data.length}.`);
+    // v3 layout: 1 disc + 1 level + 32 commitment + 32 nonce + 64 cloak_sigs = 130.
+    if (ix.data.length !== 130) {
+      syncFail(`renew ix data length mismatch: expected 130 (1+1+32+32+64), got ${ix.data.length}.`);
     }
     if (ix.data.readUInt8(0) !== IX_RENEW_SUBSCRIPTION) {
       syncFail(`renew ix discriminator mismatch (expected ${IX_RENEW_SUBSCRIPTION}, got ${ix.data.readUInt8(0)})`);
@@ -398,6 +466,7 @@ describe('renewSubscription ix data — frontend builder vs state.rs layout (v2)
     if (ix.data.readUInt8(1) !== 2) syncFail('renew.level offset drift');
     expect(Array.from(ix.data.subarray(2, 34))).toEqual(Array.from(SUBSCRIBER_COMMITMENT_BYTES));
     expect(Array.from(ix.data.subarray(34, 66))).toEqual(Array.from(SUBSCRIBER_NONCE_BYTES));
+    expect(Array.from(ix.data.subarray(66, 130))).toEqual(Array.from(CLOAK_PAYMENT_SIGS_BYTES));
 
     // Account order per renew_subscription.rs (no rent — renew is mut, not init):
     //   subscriber, community, subscription, protocol_treasury, creator,
@@ -412,6 +481,21 @@ describe('renewSubscription ix data — frontend builder vs state.rs layout (v2)
     expect(ix.keys[3].pubkey.toBase58()).toBe(TREASURY.toBase58());
     expect(ix.keys[5].pubkey.toBase58()).toBe(SYSVAR_CLOCK_PUBKEY.toBase58());
     expect(ix.keys[6].pubkey.toBase58()).toBe(SystemProgram.programId.toBase58());
+  });
+
+  it('emits an all-zero cloak_payment_sigs slot on the transparent (devnet) renewal path', () => {
+    const ix = buildRenewSubscriptionIx({
+      subscriber: SUBSCRIBER,
+      community: COMMUNITY,
+      creator: CREATOR,
+      level: 2,
+      commitment: SUBSCRIBER_COMMITMENT_BYTES,
+      nonce: SUBSCRIBER_NONCE_BYTES,
+      cloakPaymentSigs: CLOAK_PAYMENT_SIGS_ZERO,
+    });
+    expect(ix.data.length).toBe(130);
+    const sigsSlot = ix.data.subarray(66, 130);
+    expect(sigsSlot.every((b) => b === 0)).toBe(true);
   });
 });
 

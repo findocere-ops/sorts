@@ -98,26 +98,38 @@ export interface SubscribeArgs {
   /** Public salt that goes into the tier_commitment derivation. Reuse the
    *  subscriber pubkey or any pubkey — it lives on-chain as plaintext. */
   saltPubkey: PublicKey;
+  /** 64-byte Tier 1.3 dual-path payment-rail switch:
+   *   - all-zero (default, devnet) → on-chain handler executes the
+   *     transparent system_program::transfer flow.
+   *   - non-zero (mainnet, Cloak path) → handler skips the transfer and
+   *     records the recorded sigs for off-chain verification.
+   *  Caller MUST pass `new Uint8Array(64)` (zero-filled) for transparent
+   *  builds; pass the Cloak transfer signatures concatenated for the Cloak
+   *  build. Helpers: `buildZeroCloakSigs` and `buildCloakSigsFromTxSigs`
+   *  in this file. */
+  cloakPaymentSigs: Uint8Array;
 }
 
 export function buildSubscribeIx(args: SubscribeArgs): TransactionInstruction {
   if (args.level < 1 || args.level > 3) throw new Error('level must be 1..=3');
   if (args.commitment.length !== 32) throw new Error('commitment must be 32 bytes');
   if (args.nonce.length !== 32) throw new Error('nonce must be 32 bytes');
+  if (args.cloakPaymentSigs.length !== 64) throw new Error('cloakPaymentSigs must be 64 bytes');
 
   const { pda: subscription } = deriveSubscriptionPda(args.community, args.commitment);
   const programId = getSortsProgramId();
 
-  // ix layout (v2 — pseudonymous):
-  //   [u8 disc][u8 level][u8;32 commitment][u8;32 nonce][pubkey salt = 32 bytes]
-  //   = 1 + 1 + 32 + 32 + 32 = 98 bytes.
-  const data = Buffer.alloc(98);
+  // ix layout (v3 — Tier 1.2 + Tier 1.3):
+  //   [u8 disc][u8 level][u8;32 commitment][u8;32 nonce][u8;32 salt][u8;64 cloak_sigs]
+  //   = 1 + 1 + 32 + 32 + 32 + 64 = 162 bytes.
+  const data = Buffer.alloc(162);
   let off = 0;
   data.writeUInt8(IX_SUBSCRIBE, off); off += 1;
   data.writeUInt8(args.level, off); off += 1;
   Buffer.from(args.commitment).copy(data, off); off += 32;
   Buffer.from(args.nonce).copy(data, off); off += 32;
-  Buffer.from(args.saltPubkey.toBuffer()).copy(data, off);
+  Buffer.from(args.saltPubkey.toBuffer()).copy(data, off); off += 32;
+  Buffer.from(args.cloakPaymentSigs).copy(data, off);
 
   return new TransactionInstruction({
     programId,
@@ -144,24 +156,52 @@ export interface RenewArgs {
   commitment: Uint8Array;
   /** 32-byte nonce — must reproduce the original commitment. */
   nonce: Uint8Array;
+  /** Tier 1.3 — same dual-path discriminator as subscribe. */
+  cloakPaymentSigs: Uint8Array;
+}
+
+/** Tier 1.3 helper — produce the all-zero `cloak_payment_sigs` slot used by
+ *  the transparent (devnet) payment path. */
+export function buildZeroCloakSigs(): Uint8Array {
+  return new Uint8Array(64);
+}
+
+/** Tier 1.3 helper — concatenate two Cloak transfer signatures into the
+ *  64-byte `cloak_payment_sigs` slot used by the Cloak (mainnet) path.
+ *  Each signature must be exactly 32 bytes (the first half of a Solana
+ *  signature; we keep both halves intentionally small to fit on-chain).
+ *  In practice the SolanaChainAdapter populates this from the signatures
+ *  returned by `transact()` -> `transfer()` on Cloak. */
+export function buildCloakSigsFromTxSigs(
+  treasurySigFirst32: Uint8Array,
+  creatorSigFirst32: Uint8Array,
+): Uint8Array {
+  if (treasurySigFirst32.length !== 32) throw new Error('treasurySigFirst32 must be 32 bytes');
+  if (creatorSigFirst32.length !== 32) throw new Error('creatorSigFirst32 must be 32 bytes');
+  const out = new Uint8Array(64);
+  out.set(treasurySigFirst32, 0);
+  out.set(creatorSigFirst32, 32);
+  return out;
 }
 
 export function buildRenewSubscriptionIx(args: RenewArgs): TransactionInstruction {
   if (args.level < 1 || args.level > 3) throw new Error('level must be 1..=3');
   if (args.commitment.length !== 32) throw new Error('commitment must be 32 bytes');
   if (args.nonce.length !== 32) throw new Error('nonce must be 32 bytes');
+  if (args.cloakPaymentSigs.length !== 64) throw new Error('cloakPaymentSigs must be 64 bytes');
 
   const { pda: subscription } = deriveSubscriptionPda(args.community, args.commitment);
   const programId = getSortsProgramId();
 
-  // ix layout (v2): [u8 disc][u8 level][u8;32 commitment][u8;32 nonce]
-  // = 1 + 1 + 32 + 32 = 66 bytes.
-  const data = Buffer.alloc(66);
+  // ix layout (v3): [u8 disc][u8 level][u8;32 commitment][u8;32 nonce][u8;64 cloak_sigs]
+  // = 1 + 1 + 32 + 32 + 64 = 130 bytes.
+  const data = Buffer.alloc(130);
   let off = 0;
   data.writeUInt8(IX_RENEW_SUBSCRIPTION, off); off += 1;
   data.writeUInt8(args.level, off); off += 1;
   Buffer.from(args.commitment).copy(data, off); off += 32;
-  Buffer.from(args.nonce).copy(data, off);
+  Buffer.from(args.nonce).copy(data, off); off += 32;
+  Buffer.from(args.cloakPaymentSigs).copy(data, off);
 
   return new TransactionInstruction({
     programId,

@@ -2,7 +2,7 @@ use {
     crate::{
         constants::PROTOCOL_TREASURY,
         error::SortsError,
-        logic::{split_protocol_fee, subscriber_commitment, tier_commitment},
+        logic::{is_zero_64, split_protocol_fee, subscriber_commitment, tier_commitment},
         state::{Community, CommunityInner, Subscription, SubscriptionInner},
     },
     quasar_lang::prelude::*,
@@ -16,8 +16,21 @@ use {
 ///     borrowed by the `#[account(address = ...)]` macro without a temp.
 ///   - `nonce: [u8; 32]` is the secret preimage that the handler re-derives
 ///     to enforce ownership.
+///
+/// `cloak_payment_sigs` is the Tier 1.3 payment-rail dual-path switch:
+///   - all-zero (default, devnet) → handler executes the legacy transparent
+///     `system_program::transfer` flow.
+///   - non-zero (mainnet, Cloak path) → handler SKIPS the transfer and
+///     records the sigs on the Subscription account for off-chain
+///     verification. See state.rs Subscription docstring.
 #[derive(Accounts)]
-#[instruction(level: u8, commitment: Address, nonce: [u8; 32], salt_pubkey: Address)]
+#[instruction(
+    level: u8,
+    commitment: Address,
+    nonce: [u8; 32],
+    salt_pubkey: Address,
+    cloak_payment_sigs: [u8; 64],
+)]
 pub struct Subscribe {
     #[account(mut)]
     pub subscriber: Signer,
@@ -53,6 +66,7 @@ impl Subscribe {
         commitment: Address,
         nonce: [u8; 32],
         salt_pubkey: Address,
+        cloak_payment_sigs: [u8; 64],
     ) -> Result<(), ProgramError> {
         if self.protocol_treasury.address() != &PROTOCOL_TREASURY {
             return Err(SortsError::UnauthorizedTreasury.into());
@@ -93,17 +107,26 @@ impl Subscribe {
         let price: u64 = price;
         let duration: i64 = duration;
 
-        let (fee, creator_share) = split_protocol_fee(price)?;
+        // Tier 1.3 dual-path payment rail. When the recorded Cloak signatures
+        // are all-zero, this is a transparent (devnet) path — the program
+        // moves lamports via system_program::transfer as before. When the
+        // sigs are non-zero, this is the Cloak path — payment was already
+        // moved off-band by the frontend's signAllTransactions bundle and
+        // the program only records the sigs for off-chain verification.
+        let cloak_path_active = !is_zero_64(&cloak_payment_sigs);
+        if !cloak_path_active {
+            let (fee, creator_share) = split_protocol_fee(price)?;
 
-        if fee > 0 {
-            self.system_program
-                .transfer(&self.subscriber, &self.protocol_treasury, fee)
-                .invoke()?;
-        }
-        if creator_share > 0 {
-            self.system_program
-                .transfer(&self.subscriber, &self.creator, creator_share)
-                .invoke()?;
+            if fee > 0 {
+                self.system_program
+                    .transfer(&self.subscriber, &self.protocol_treasury, fee)
+                    .invoke()?;
+            }
+            if creator_share > 0 {
+                self.system_program
+                    .transfer(&self.subscriber, &self.creator, creator_share)
+                    .invoke()?;
+            }
         }
 
         let now: i64 = self.clock.unix_timestamp.into();
@@ -117,6 +140,7 @@ impl Subscribe {
             expiry_ts,
             tier_commitment: tier_commit,
             salt_pubkey,
+            cloak_payment_sigs,
             bump: bumps.subscription,
         });
 

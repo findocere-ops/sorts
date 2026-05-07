@@ -61,6 +61,13 @@ const EnvSchema = z.object({
   ENABLE_IKA_REAL_FUNDS: z.coerce.boolean().default(false),
   ENABLE_REAL_FHE: z.coerce.boolean().default(false),
   ENABLE_REAL_MPC_SIGNING: z.coerce.boolean().default(false),
+
+  // Tier 1.3 — Cloak private payment rail. Default false because Cloak's
+  // program is mainnet-only; flipping to true on a devnet build would have
+  // no effect (no Cloak program at the address). Backend reads this flag
+  // mainly to decide whether the (planned-v2) cron verifier should poll for
+  // recorded sigs and validate them against Cloak's mainnet program.
+  ENABLE_CLOAK_MAINNET: z.coerce.boolean().default(false),
 }).superRefine((env, ctx) => {
   // Production must use managed Postgres; SQLite is local-dev only.
   if (env.NODE_ENV === 'production' && !env.DATABASE_URL) {
@@ -109,6 +116,14 @@ export function loadEnv(): Env {
     console.warn(
       '[env] A "real-funds" or "real-crypto-primitive" feature flag is enabled. ' +
         'This is not the safe default — confirm this is intended.',
+    );
+  }
+  if (cachedEnv.ENABLE_CLOAK_MAINNET) {
+    console.warn(
+      "[env] ENABLE_CLOAK_MAINNET=true — Cloak private payment rail is active. " +
+        "Cloak's program is mainnet-only, so this flag has no effect on devnet builds. " +
+        'On mainnet, ensure a backend cron verifier is running before accepting subscribes ' +
+        '(see docs/SUBMISSION_RISKS.md "Cloak cron verifier").',
     );
   }
 

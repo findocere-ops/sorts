@@ -56,6 +56,12 @@ export interface SubscribeInput {
   saltPubkey?: string;
   /** Solana-only: community creator pubkey, used as a verified account on the ix. */
   creatorAddress?: string;
+  /** Solana + Cloak path only: the lamport price of the chosen tier. The
+   *  on-chain transparent path reads this from the Community PDA itself,
+   *  so this hint is only consumed when `NEXT_PUBLIC_ENABLE_CLOAK_MAINNET`
+   *  is true (Cloak orchestration runs client-side and needs to know the
+   *  amount before the on-chain ix). */
+  tierPriceLamports?: bigint;
 }
 
 export interface RenewInput {
@@ -65,6 +71,8 @@ export interface RenewInput {
   creatorAddress?: string;
   /** Solana-only — required by the on-chain renew_subscription ix. */
   tier?: TierLevel;
+  /** Solana + Cloak path only — same as SubscribeInput.tierPriceLamports. */
+  tierPriceLamports?: bigint;
 }
 
 export interface TransactionResult {

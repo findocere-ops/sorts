@@ -24,6 +24,7 @@ import {
   buildInitializeCommunityIx,
   buildRenewSubscriptionIx,
   buildSubscribeIx,
+  buildZeroCloakSigs,
   hash32,
 } from '@/lib/solana/instructions';
 import {
@@ -32,6 +33,7 @@ import {
   deriveSubscriberCommitment,
   getSortsProgramId,
   nonceFromSignature,
+  PROTOCOL_TREASURY,
 } from '@/lib/solana/program';
 
 /** Layout offsets — must match programs/sorts-community/src/state.rs.
@@ -167,6 +169,39 @@ export function useSolanaChainAdapter(): ChainAdapter {
       // wallet to sign a canonical message. The nonce never leaves the browser.
       const { commitment, nonce } = await deriveCommitmentForCommunity(signer, community);
 
+      // Step 2: Tier 1.3 dual-path payment rail.
+      // - Default (devnet): all-zero `cloak_payment_sigs`. The on-chain
+      //   handler executes the transparent system_program::transfer flow.
+      // - When ENABLE_CLOAK_MAINNET=true (mainnet only): orchestrate a
+      //   Cloak deposit + 2× partialWithdraw to creator and treasury, then
+      //   record the resulting payout signatures in the slot. The handler
+      //   then SKIPS the transparent transfer (Cloak already moved funds).
+      let cloakPaymentSigs = buildZeroCloakSigs();
+      if (env.NEXT_PUBLIC_ENABLE_CLOAK_MAINNET) {
+        if (!signTransaction) {
+          throw new Error('Cloak path requires a wallet that supports signTransaction.');
+        }
+        // Lazy import keeps the snarkjs prover bundle out of pages that don't
+        // need it. The chunk is shared with the analytics-page payroll widget.
+        const { cloakSubscribePay } = await import('@/lib/solana/cloak');
+        const tierPriceLamports = input.tierPriceLamports ?? 0n;
+        if (tierPriceLamports <= 0n) {
+          throw new Error(
+            'Cloak path requires a positive tierPriceLamports on the SubscribeInput.',
+          );
+        }
+        const feeLamports = (tierPriceLamports * 500n) / 10_000n; // 5% protocol fee, matches PROTOCOL_FEE_BPS.
+        const cloakResult = await cloakSubscribePay({
+          connection,
+          wallet: { publicKey: signer, signTransaction },
+          creator,
+          treasury: PROTOCOL_TREASURY,
+          priceLamports: tierPriceLamports,
+          feeLamports,
+        });
+        cloakPaymentSigs = cloakResult.paymentSigs;
+      }
+
       const ix = buildSubscribeIx({
         subscriber: signer,
         community,
@@ -175,6 +210,7 @@ export function useSolanaChainAdapter(): ChainAdapter {
         commitment,
         nonce,
         saltPubkey: salt,
+        cloakPaymentSigs,
       });
       const tx = new Transaction().add(ix);
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
@@ -205,18 +241,45 @@ export function useSolanaChainAdapter(): ChainAdapter {
       setTransactionState('awaiting-signature');
 
       const community = new PublicKey(input.communityAddress);
+      const creator = new PublicKey(input.creatorAddress);
       // Re-derive the same commitment + nonce that subscribe-time used. Because
       // ed25519 signing is deterministic, the same wallet over the same message
       // produces the same nonce → same commitment → same Subscription PDA.
       const { commitment, nonce } = await deriveCommitmentForCommunity(signer, community);
 
+      // Dual-path payment rail (mirrors subscribe). Each renewal records its
+      // own cloak_payment_sigs — a transparent renewal of a Cloak subscribe
+      // is allowed (sigs flip back to zero) and vice versa.
+      let cloakPaymentSigs = buildZeroCloakSigs();
+      if (env.NEXT_PUBLIC_ENABLE_CLOAK_MAINNET) {
+        if (!signTransaction) {
+          throw new Error('Cloak path requires a wallet that supports signTransaction.');
+        }
+        const { cloakSubscribePay } = await import('@/lib/solana/cloak');
+        const tierPriceLamports = input.tierPriceLamports ?? 0n;
+        if (tierPriceLamports <= 0n) {
+          throw new Error('Cloak renew requires a positive tierPriceLamports on the RenewInput.');
+        }
+        const feeLamports = (tierPriceLamports * 500n) / 10_000n;
+        const cloakResult = await cloakSubscribePay({
+          connection,
+          wallet: { publicKey: signer, signTransaction },
+          creator,
+          treasury: PROTOCOL_TREASURY,
+          priceLamports: tierPriceLamports,
+          feeLamports,
+        });
+        cloakPaymentSigs = cloakResult.paymentSigs;
+      }
+
       const ix = buildRenewSubscriptionIx({
         subscriber: signer,
         community,
-        creator: new PublicKey(input.creatorAddress),
+        creator,
         level: input.tier,
         commitment,
         nonce,
+        cloakPaymentSigs,
       });
       const tx = new Transaction().add(ix);
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');

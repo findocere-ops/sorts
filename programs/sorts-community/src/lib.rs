@@ -60,9 +60,10 @@ mod sorts_community {
         commitment: Address,
         nonce: [u8; 32],
         salt_pubkey: Address,
+        cloak_payment_sigs: [u8; 64],
     ) -> Result<(), ProgramError> {
         ctx.accounts
-            .subscribe(&ctx.bumps, level, commitment, nonce, salt_pubkey)
+            .subscribe(&ctx.bumps, level, commitment, nonce, salt_pubkey, cloak_payment_sigs)
     }
 
     #[instruction(discriminator = 2)]
@@ -71,9 +72,10 @@ mod sorts_community {
         level: u8,
         commitment: Address,
         nonce: [u8; 32],
+        cloak_payment_sigs: [u8; 64],
     ) -> Result<(), ProgramError> {
         ctx.accounts
-            .renew_subscription(level, commitment, nonce)
+            .renew_subscription(level, commitment, nonce, cloak_payment_sigs)
     }
 }
 

@@ -19,6 +19,13 @@ type EnvShape = {
   NEXT_PUBLIC_SOLANA_DEVNET_RPC_URL?: string;
   NEXT_PUBLIC_SOLANA_PROGRAM_ID?: string;
 
+  // Tier 1.3 — Cloak private payment rail. Default false because Cloak's
+  // program is mainnet-only; flipping to true on a devnet build prompts the
+  // SolanaChainAdapter to attempt the Cloak path, which will fail (program
+  // not found at the address). Useful only for mainnet deploys, after a
+  // backend cron verifier is wired (see docs/SUBMISSION_RISKS.md).
+  NEXT_PUBLIC_ENABLE_CLOAK_MAINNET: boolean;
+
   // Phase 1 — Arbitrum legacy (kept buildable, not the demo path)
   NEXT_PUBLIC_CHAIN_ID?: number;
   NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL?: string;
@@ -95,6 +102,10 @@ function readEnv(): EnvShape {
     NEXT_PUBLIC_SOLANA_PROGRAM_ID: readSolanaProgramId(
       'NEXT_PUBLIC_SOLANA_PROGRAM_ID',
       process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID,
+    ),
+
+    NEXT_PUBLIC_ENABLE_CLOAK_MAINNET: readBool(
+      process.env.NEXT_PUBLIC_ENABLE_CLOAK_MAINNET,
     ),
 
     NEXT_PUBLIC_CHAIN_ID: Number.isFinite(chainId) ? (chainId as number) : undefined,

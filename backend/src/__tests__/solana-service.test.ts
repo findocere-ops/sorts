@@ -102,19 +102,23 @@ describe('SolanaService', () => {
   });
 
   describe('decodeSubscription', () => {
-    it('decodes a well-formed Subscription buffer; exposes commitment only, never plaintext subscriber or level', () => {
-      const data = Buffer.alloc(138);
+    it('decodes a well-formed v3 Subscription buffer; exposes commitment + cloak sigs slot, never plaintext subscriber or level', () => {
+      const data = Buffer.alloc(202);
       let off = 0;
       data.writeUInt8(3, off); off += 1; // discriminator
       const community = new PublicKey('11111111111111111111111111111112');
       // v2: byte 33-65 holds subscriber_commitment, NOT subscriber pubkey.
       const subscriberCommitment = Buffer.alloc(32, 0xa5);
       const salt = new PublicKey('11111111111111111111111111111114');
+      // v3: bytes 137-201 hold cloak_payment_sigs. Use a non-zero pattern so
+      // the test catches a layout drift if the slot is read at the wrong offset.
+      const cloakSigs = Buffer.alloc(64, 0xee);
       Buffer.from(community.toBuffer()).copy(data, off); off += 32;
       subscriberCommitment.copy(data, off); off += 32;
       data.writeBigInt64LE(1_800_000_000n, off); off += 8;
       Buffer.alloc(32, 0xcc).copy(data, off); off += 32; // tier_commitment
       Buffer.from(salt.toBuffer()).copy(data, off); off += 32;
+      cloakSigs.copy(data, off); off += 64;
       data.writeUInt8(255, off);
 
       const out = decodeSubscription(data)!;
@@ -123,19 +127,49 @@ describe('SolanaService', () => {
       expect(out.expiryTs).toBe(1_800_000_000n);
       expect(out.tierCommitment.length).toBe(32);
       expect(out.saltPubkey.toBase58()).toBe(salt.toBase58());
+      expect(out.cloakPaymentSigs.length).toBe(64);
+      expect(Array.from(out.cloakPaymentSigs)).toEqual(Array.from(cloakSigs));
       expect(out.bump).toBe(255);
 
       // Privacy assertion: the decoded type has NO `tier`, `level`, `tierLevel`,
-      // or plaintext `subscriber` field. Only `subscriberCommitment` (Tier 1.2
-      // mitigation) plus the tier commitment + salt.
+      // or plaintext `subscriber` field. Only `subscriberCommitment` (Tier 1.2)
+      // plus the tier commitment, salt, and Tier 1.3 Cloak sigs slot.
       expect(Object.keys(out)).toEqual(
         expect.arrayContaining([
-          'community', 'subscriberCommitment', 'expiryTs', 'tierCommitment', 'saltPubkey', 'bump',
+          'community', 'subscriberCommitment', 'expiryTs',
+          'tierCommitment', 'saltPubkey', 'cloakPaymentSigs', 'bump',
         ]),
       );
       expect(Object.keys(out)).not.toEqual(
         expect.arrayContaining(['tier', 'level', 'tierLevel', 'subscriber']),
       );
+    });
+
+    it('decodes the all-zero (devnet, transparent) Cloak sigs slot without errors', () => {
+      const data = Buffer.alloc(202);
+      let off = 0;
+      data.writeUInt8(3, off); off += 1;
+      const community = new PublicKey('11111111111111111111111111111112');
+      const subscriberCommitment = Buffer.alloc(32, 0x77);
+      const salt = new PublicKey('11111111111111111111111111111114');
+      Buffer.from(community.toBuffer()).copy(data, off); off += 32;
+      subscriberCommitment.copy(data, off); off += 32;
+      data.writeBigInt64LE(1_800_000_000n, off); off += 8;
+      Buffer.alloc(32, 0).copy(data, off); off += 32;
+      Buffer.from(salt.toBuffer()).copy(data, off); off += 32;
+      // cloak_payment_sigs intentionally left as zeros (devnet default)
+      off += 64;
+      data.writeUInt8(254, off);
+
+      const out = decodeSubscription(data)!;
+      expect(out.cloakPaymentSigs.length).toBe(64);
+      expect(out.cloakPaymentSigs.every((b) => b === 0)).toBe(true);
+    });
+
+    it('rejects pre-v3 buffers (138 bytes) — layout drift guard', () => {
+      const old = Buffer.alloc(138);
+      old.writeUInt8(3, 0);
+      expect(decodeSubscription(old)).toBeNull();
     });
   });
 

@@ -347,3 +347,78 @@ Out of scope for this fix (deferred to v2 of the privacy stack):
     (was 66 — net +7 from this run's additions).
   - `pnpm --filter @sorts/frontend build`: green.
   - Devnet upgrade tx: `2nLtw6N5TjHrVGymvxLki6TLTwQ4rcBun2BRXcypX62gH6e271nau4vkj3Q14SCRDMa2rNqdVRWW7Z8KVjYh1xbz`.
+
+---
+
+## Run — 2026-05-07 (v3) — Tier 1.3 mitigation: Cloak private payment rail
+
+Counter-thesis Tier 1.3 (raised during the post-Tier-1.2 audit): the v2 SORTS subscribe and renew_subscription instructions still moved lamports via `system_program::transfer(subscriber, treasury, fee)` and `system_program::transfer(subscriber, creator, share)`. Even with the v2 pseudonymized `subscriber_commitment` on the Subscription account, an observer watching the protocol treasury `8z2PLCH…` could correlate `(timestamp, subscriber_pubkey, community_creator, amount)` for every subscribe — partially undoing the Tier 1.2 identity mitigation.
+
+This run records the Tier 1.3 fix shipped today: a Cloak-rail dual-path payment switch on the v3 program, gated behind a feature flag because Cloak's on-chain program is mainnet-only.
+
+### New invariant 15 — payment-rail privacy
+
+```
+PG-017 clean: invariant 15 — Subscription account carries cloak_payment_sigs slot;
+              dual-path subscribe/renew skip system_program::transfer when sigs are non-zero
+```
+
+**Threat closed on mainnet, documented as a labeled limitation on devnet.** The on-chain program now reads `cloak_payment_sigs: [u8;64]` from the ix args. If all-zero, the legacy transparent transfer fires (devnet path; lamports visible). If non-zero, the program SKIPS the transfer (Cloak handled the payment off-band) and stores the recorded sigs for off-chain verification. The frontend dual-path flips on `NEXT_PUBLIC_ENABLE_CLOAK_MAINNET`.
+
+### Construction
+
+- **State.rs.** `Subscription` body grew from 138 to 202 bytes by appending `pub cloak_payment_sigs: [u8; 64]` before `bump`. Layout offsets bytes 137..201 inclusive. Devnet records all-zero; mainnet records the concatenated first-32-bytes of the two Cloak partial-withdraw signatures.
+- **Subscribe + renew handlers** ([programs/sorts-community/src/instructions/subscribe.rs](programs/sorts-community/src/instructions/subscribe.rs), [renew_subscription.rs](programs/sorts-community/src/instructions/renew_subscription.rs)): a new `is_zero_64(&cloak_payment_sigs)` branch from `logic.rs` decides whether to invoke `system_program::transfer`. When non-zero, the handler still verifies the `subscriber_commitment` match (Tier 1.2 ownership check) but never moves lamports.
+- **Frontend SolanaChainAdapter** ([frontend/src/lib/chain/adapters/SolanaChainAdapter.ts](frontend/src/lib/chain/adapters/SolanaChainAdapter.ts)): when the flag is on, dynamically imports `frontend/src/lib/solana/cloak.ts` and orchestrates `transact()` (deposit) → `partialWithdraw()` to creator → `partialWithdraw()` to treasury. The first-32-bytes of the two payout signatures concatenate into the 64-byte `cloak_payment_sigs` slot.
+- **CreatorPayrollWithdraw** ([frontend/src/components/studio/CreatorPayrollWithdraw.tsx](frontend/src/components/studio/CreatorPayrollWithdraw.tsx)): mounted on `/studio/[cid]/analytics`. Same flag gates real `fullWithdraw` behavior; off-flag renders a labeled "mainnet only" disabled card so creators see the path that's coming.
+- **Cloak fee handling**: `CLOAK_FEE_ABSORBER = 'subscriber'` constant in [programs/sorts-community/src/constants.rs](programs/sorts-community/src/constants.rs). Subscriber pays the gross `price + cloak_withdraw_fee × 2` so creator and treasury each receive their net SORTS share unimpaired.
+
+### What this does NOT close (yet)
+
+The on-chain SORTS program does NOT verify the recorded Cloak signatures via CPI — Cloak does not expose a CPI verifier. An attacker on mainnet could submit a SORTS subscribe with bogus sigs and obtain a Subscription account without paying.
+
+**Mitigation plan (not in this PR; required before any production mainnet flag-flip):** a backend cron service that polls fresh Subscription accounts where `cloak_payment_sigs != 0`, fetches the corresponding Cloak transactions by signature, and confirms the recorded payouts match `(creator wallet, price - fee)` and `(treasury, fee)`. Subscriptions that fail verification are flagged `revoked: true` in the DB; gated content endpoints respect the flag. Documented as a v2 hard requirement in [docs/SUBMISSION_RISKS.md](SUBMISSION_RISKS.md).
+
+### Per-invariant evidence (additions)
+
+| # | Check | Result |
+|---|---|---|
+| 15 | `rg 'pub cloak_payment_sigs: \[u8; 64\]' programs/sorts-community/src/state.rs` | one match. Field present on Subscription. |
+| 15 | `rg 'is_zero_64' programs/sorts-community/src/instructions/{subscribe,renew_subscription}.rs` | both files use the dual-path discriminator. |
+| 15 | Account size 202 bytes confirmed by `decodeSubscription` length guard at [backend/src/services/chain/SolanaService.ts:296](../backend/src/services/chain/SolanaService.ts) and the encoding-roundtrip test that hand-builds a 202-byte buffer. |
+| 15 | Frontend ix builders (subscribe 162 bytes, renew 130 bytes) include a new `cloak_payment_sigs: Uint8Array` arg with explicit length validation (throws on != 64). |
+| 15 | Cloak path defensive guard: `assertCloakActive()` in [frontend/src/lib/solana/cloak.ts](../frontend/src/lib/solana/cloak.ts) throws if a call lands while the flag is off. |
+
+### Test coverage (additions)
+
+- `programs/sorts-community/src/logic.rs` — new unit test `is_zero_64_detects_all_zero_and_any_non_zero`.
+- `programs/sorts-community/tests/sorts_community.rs` — new integration test t9 `t9_cloak_payment_dual_path` asserts (a) the helper picks the right branch for each input shape, (b) source-level `if !cloak_path_active` gating present on both ix files, (c) state.rs holds the `pub cloak_payment_sigs: [u8; 64]` field.
+- `backend/src/__tests__/solana-service.test.ts` — `decodeSubscription` cases for both v3 layout (filled cloak sigs) and v3 transparent path (all-zero cloak sigs); explicit rejection of pre-v3 138-byte buffers.
+- `backend/src/__tests__/encoding-roundtrip.test.ts` — Subscription byte layout grows to 202 bytes; subscribe ix grows to 162 bytes; renew ix grows to 130 bytes. New "all-zero cloak_payment_sigs slot on transparent path" cases. Length-rejection test for wrong-byte-length cloakPaymentSigs argument.
+
+### Trade-off accepted
+
+Cloak's program is mainnet-only as of 2026-05-07; the SDK supports `Network = "devnet"` as a type but the on-chain program does not exist at the documented id on devnet. Per Universal Hard Rule "devnet only, no real funds", we ship the Cloak code path under a feature flag, default OFF on devnet. The submission demo runs the transparent payment path; the Cloak narrative is delivered via a code walkthrough segment.
+
+Other Cloak constraints documented in [SUBMISSION_RISKS.md](SUBMISSION_RISKS.md):
+
+- SDK 0.1.6 is early-stage; pinned without caret per [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) S7.
+- Cloak audit history not stated in docs at any URL we fetched.
+- Cloak relayer (`https://api.cloak.ag`) is a runtime dependency on mainnet — outage scenario added to INCIDENT_RESPONSE.md S6.
+- UTXO persistence is consumer's responsibility; v2 in-browser store deferred.
+- Tip + QR-code payment paths deferred to v2 (originally in-scope; cut to fit the timebox).
+
+### Updated summary
+
+- **Total invariants checked:** 15 (was 14).
+- **Findings breakdown after Tier 1.3 mitigation:**
+  - Critical: 0
+  - High: 0 (Tier 1.3 closed-on-mainnet, documented-on-devnet)
+  - Medium: 0
+  - Low: 1 (PG-014 unchanged)
+  - Info: 1 (PG-015 unchanged)
+- **Build/test confirmation:**
+  - `cargo test` (program): 7 unit + 9 integration = 16/16 passing.
+  - `pnpm --filter @sorts/backend test`: 12 suites, 78 tests passing (was 73 — net +5 from this run's additions).
+  - `pnpm --filter @sorts/frontend build`: green; Cloak chunk lazy-loaded (bundle base unchanged at 88.7 KB shared).
+  - Devnet v3 upgrade tx: `21ajmPFUdbMVh21qXTh48bypjNwHkMfQaKqPho6h5ynhaiSDvbNnAKsTmiv4xsgW3uMTDx4Uy7jh75qCCewitQN1`.

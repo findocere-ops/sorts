@@ -256,14 +256,15 @@ export class SolanaService implements IChainService {
 
 // ── Decoders (hand-written; Quasar uses single-byte account discriminators) ──
 //
-// Subscription layout (v2 — pseudonymous):
-//   byte 0          = discriminator (u8 = 3)
-//   bytes 1..33     = community: Address (32)
-//   bytes 33..65    = subscriber_commitment: [u8; 32]      ← was `subscriber` plaintext in v1
-//   bytes 65..73    = expiry_ts: i64 (8)
-//   bytes 73..105   = tier_commitment: [u8; 32]
-//   bytes 105..137  = salt_pubkey: Address (32)
-//   byte 137        = bump (u8)
+// Subscription layout (v3 — pseudonymous + Cloak dual-path, 202 bytes):
+//   byte 0           = discriminator (u8 = 3)
+//   bytes 1..33      = community: Address (32)
+//   bytes 33..65     = subscriber_commitment: [u8; 32]    ← Tier 1.2 (was plaintext in v1)
+//   bytes 65..73     = expiry_ts: i64 (8)
+//   bytes 73..105    = tier_commitment: [u8; 32]
+//   bytes 105..137   = salt_pubkey: Address (32)
+//   bytes 137..201   = cloak_payment_sigs: [u8; 64]       ← Tier 1.3 (new in v3)
+//   byte 201         = bump (u8)
 
 function decodeCommunity(data: Buffer): CommunityAccount | null {
   if (data.length < 179) return null;
@@ -294,7 +295,7 @@ function decodeCommunity(data: Buffer): CommunityAccount | null {
 }
 
 function decodeSubscription(data: Buffer): SubscriptionAccount | null {
-  if (data.length < 138) return null;
+  if (data.length < 202) return null;
   if (data.readUInt8(0) !== SUBSCRIPTION_DISCRIMINATOR) return null;
   let off = 1;
   const community = new PublicKey(data.subarray(off, off + 32)); off += 32;
@@ -302,8 +303,17 @@ function decodeSubscription(data: Buffer): SubscriptionAccount | null {
   const expiryTs = data.readBigInt64LE(off); off += 8;
   const tierCommitment = new Uint8Array(data.subarray(off, off + 32)); off += 32;
   const saltPubkey = new PublicKey(data.subarray(off, off + 32)); off += 32;
+  const cloakPaymentSigs = new Uint8Array(data.subarray(off, off + 64)); off += 64;
   const bump = data.readUInt8(off);
-  return { community, subscriberCommitment, expiryTs, tierCommitment, saltPubkey, bump };
+  return {
+    community,
+    subscriberCommitment,
+    expiryTs,
+    tierCommitment,
+    saltPubkey,
+    cloakPaymentSigs,
+    bump,
+  };
 }
 
 function discriminatorBase58(disc: number): string {

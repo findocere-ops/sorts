@@ -24,6 +24,24 @@ pub fn is_active(expiry_ts: i64, now: i64) -> bool {
     now < expiry_ts
 }
 
+/// Tier 1.3 dual-path discriminator. Returns true if every byte in the
+/// `cloak_payment_sigs` slot is zero — the transparent (devnet) path.
+/// Returns false when ANY byte is non-zero — the Cloak (mainnet) path.
+///
+/// We do not use `slice == [0u8; 64]` directly because that would compile to
+/// a heap-equivalent compare on some Rust targets. Manual loop is constant-
+/// time on every byte and `no_std`-friendly.
+#[inline(always)]
+pub fn is_zero_64(bytes: &[u8; 64]) -> bool {
+    let mut acc: u8 = 0;
+    let mut i = 0;
+    while i < 64 {
+        acc |= bytes[i];
+        i += 1;
+    }
+    acc == 0
+}
+
 /// Tier commitment = derive("SORTS_TIER_V1" || level || salt) as a 32-byte digest.
 /// Uses `Address::derive_address` (PDA derivation) as a deterministic hash function —
 /// available in `solana-address` without pulling in a separate keccak crate.
@@ -113,6 +131,30 @@ mod tests {
             tier_commitment(1, &salt_a, &program_id),
             tier_commitment(1, &salt_a, &program_id)
         );
+    }
+
+    #[test]
+    fn is_zero_64_detects_all_zero_and_any_non_zero() {
+        let zero = [0u8; 64];
+        assert!(is_zero_64(&zero), "all-zero must return true");
+
+        let mut one_byte = [0u8; 64];
+        one_byte[0] = 1;
+        assert!(!is_zero_64(&one_byte), "first byte non-zero must return false");
+
+        let mut last_byte = [0u8; 64];
+        last_byte[63] = 0xff;
+        assert!(!is_zero_64(&last_byte), "last byte non-zero must return false");
+
+        let mid_byte_only = {
+            let mut b = [0u8; 64];
+            b[31] = 0x42;
+            b
+        };
+        assert!(!is_zero_64(&mid_byte_only), "interior non-zero byte must return false");
+
+        let all_ones = [0xffu8; 64];
+        assert!(!is_zero_64(&all_ones), "every byte 0xff must return false");
     }
 
     #[test]

@@ -1,8 +1,10 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { CreatorStudioLayout } from '@/components/layout/CreatorStudioLayout';
 import { AggregateStatsCard, type AggregateStats } from '@/components/studio/AggregateStatsCard';
+import { CreatorPayrollWithdraw } from '@/components/studio/CreatorPayrollWithdraw';
 
 export default function StudioAnalyticsPage({ params }: { params: { cid: string } }) {
   return (
@@ -17,6 +19,7 @@ export default function StudioAnalyticsPage({ params }: { params: { cid: string 
 function AnalyticsInner({ cid }: { cid: string }) {
   const [stats, setStats] = useState<AggregateStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { publicKey } = useWallet();
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +51,7 @@ function AnalyticsInner({ cid }: { cid: string }) {
       </header>
       <AggregateStatsCard stats={stats} />
       {error && <p className="t-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      {publicKey && <CreatorPayrollWithdraw recipient={publicKey.toBase58()} />}
     </div>
   );
 }

@@ -2,14 +2,14 @@ use {
     crate::{
         constants::PROTOCOL_TREASURY,
         error::SortsError,
-        logic::{split_protocol_fee, subscriber_commitment},
+        logic::{is_zero_64, split_protocol_fee, subscriber_commitment},
         state::{Community, CommunityInner, Subscription, SubscriptionInner},
     },
     quasar_lang::prelude::*,
 };
 
 #[derive(Accounts)]
-#[instruction(level: u8, commitment: Address, nonce: [u8; 32])]
+#[instruction(level: u8, commitment: Address, nonce: [u8; 32], cloak_payment_sigs: [u8; 64])]
 pub struct RenewSubscription {
     #[account(mut)]
     pub subscriber: Signer,
@@ -46,6 +46,7 @@ impl RenewSubscription {
         level: u8,
         commitment: Address,
         nonce: [u8; 32],
+        cloak_payment_sigs: [u8; 64],
     ) -> Result<(), ProgramError> {
         if self.protocol_treasury.address() != &PROTOCOL_TREASURY {
             return Err(SortsError::UnauthorizedTreasury.into());
@@ -88,17 +89,25 @@ impl RenewSubscription {
             _ => return Err(SortsError::InvalidTierLevel.into()),
         };
 
-        let (fee, creator_share) = split_protocol_fee(price)?;
+        // Tier 1.3 dual-path renewal payment, mirroring `subscribe`. When
+        // `cloak_payment_sigs` is all-zero (devnet default), execute the
+        // transparent transfer flow. When non-zero, payment was already
+        // moved off-band by Cloak; the program records the new sigs and
+        // skips the transparent transfer.
+        let cloak_path_active = !is_zero_64(&cloak_payment_sigs);
+        if !cloak_path_active {
+            let (fee, creator_share) = split_protocol_fee(price)?;
 
-        if fee > 0 {
-            self.system_program
-                .transfer(&self.subscriber, &self.protocol_treasury, fee)
-                .invoke()?;
-        }
-        if creator_share > 0 {
-            self.system_program
-                .transfer(&self.subscriber, &self.creator, creator_share)
-                .invoke()?;
+            if fee > 0 {
+                self.system_program
+                    .transfer(&self.subscriber, &self.protocol_treasury, fee)
+                    .invoke()?;
+            }
+            if creator_share > 0 {
+                self.system_program
+                    .transfer(&self.subscriber, &self.creator, creator_share)
+                    .invoke()?;
+            }
         }
 
         let now: i64 = self.clock.unix_timestamp.into();
@@ -118,12 +127,17 @@ impl RenewSubscription {
         let salt_pubkey = self.subscription.salt_pubkey;
         let sub_bump = self.subscription.bump;
 
+        // Always overwrite the stored Cloak sigs with the current renewal's
+        // sigs. A subscription created on the transparent path can renew via
+        // Cloak (sigs flip from zero to non-zero) and vice versa. Each cycle
+        // records its own payment evidence; only the latest is kept on-chain.
         self.subscription.set_inner(SubscriptionInner {
             community: community_addr,
             subscriber_commitment: sub_commit,
             expiry_ts: new_expiry,
             tier_commitment: tier_commitment_existing,
             salt_pubkey,
+            cloak_payment_sigs,
             bump: sub_bump,
         });
 
