@@ -51,6 +51,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+        {/* Day-10 D5 — skip-link for keyboard + screen-reader users. The
+            target id `#main` lives on the first content element of every
+            page; layouts that wrap their children in a top-level div
+            should give that div `id="main" tabIndex={-1}` so the link
+            lands focus correctly. */}
+        <a href="#main" className="skip-link">Skip to content</a>
         <Providers>
           {children}
           <DisclaimerFooter />

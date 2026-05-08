@@ -118,6 +118,24 @@ asserts the file body does not contain both `preview_quota` and
 test suite owns this — `__tests__/route-shape.test.ts`.
 **Status**: Open
 
+### [Resolved] PG-016 — invariant 9 — anonymous branch added to content GET (Day-10 A5)
+**Date**: 2026-05-08
+**Diff/file**: `backend/src/api/routes/content.ts:71-89` (the `if (!wallet)` branch).
+**Invariant**: 9 (non-member content GET filters `preview_eligible`).
+**Pattern matched**:
+  - Before Day-10: anonymous callers got `posts.map(p => lockPost(p))` — every body locked.
+  - After Day-10 A5: anonymous callers get `posts.map(p => p.preview_eligible ? unlockMetadata(p) : lockPost(p))` — only `preview_eligible: true` unlocks.
+**Why this matters**: A5 in `docs/UX_RESEARCH_FINDINGS.md` flagged this as the highest-risk change in the Day-10 batch because it loosens a non-member content path. The change is in WHO can hit the unlocked path (anonymous + non-member-with-wallet now share it), not WHAT unlocks (still only `preview_eligible: true`).
+**Why it's resolved**: Invariant 9 holds. Verified by:
+  - Anonymous branch (`content.ts:85`) and non-member-authenticated branch (`content.ts:132`) both filter on `post.preview_eligible` — identical predicate.
+  - Day-10 regression test `__tests__/anonymous-preview.test.ts` — 4 cases:
+    - anonymous → preview_eligible unlocked, non-preview locked
+    - anonymous response NEVER includes a body field on locked posts
+    - anonymous response shape parity with non-member-with-wallet
+    - zero-preview community → every post locked for anonymous
+  - The previewQuotaGate middleware still runs on this route (`content.ts:52`) — anonymous callers without an `X-Session-Token` fall through to the public lock view (per `preview-quota.ts:37` `no_identity` branch).
+**Status**: Resolved.
+
 ### [Info] PG-015 — analytics-no-leak.test.ts intermittent timeout
 **Date**: 2026-05-06
 **Diff/file**: backend/src/__tests__/analytics-no-leak.test.ts (case "community stats response shape has no array fields")

@@ -11,6 +11,7 @@ import { useSolanaMembership } from '@/hooks/useSolanaMembership';
 import { UmbraMembershipCard } from '@/components/privacy/UmbraMembershipCard';
 import { Button } from '@/components/ui/Button';
 import { TipButton } from '@/components/tip/TipButton';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 
 export default function JoinCommunityPage({ params }: { params: { cid: string } }) {
   return (
@@ -48,18 +49,27 @@ function JoinInner({ cid }: { cid: string }) {
       </Shell>
     );
   }
-  if (!community) return <Shell><p className="t-sm" style={{ color: 'var(--text-2)' }}>Loading…</p></Shell>;
+  if (!community) {
+    // Day-10 B3 — skeleton instead of bare "Loading…" so layout stable.
+    return (
+      <Shell>
+        <SkeletonCard rows={2} />
+        <SkeletonCard rows={4} />
+      </Shell>
+    );
+  }
 
   const isActive = membership.entitlement?.active ?? false;
 
   return (
     <Shell>
+      {/* Day-10 B6 — privacy card moved above the description block. The card
+          is the load-bearing differentiation against Patreon/Skool, so a
+          first-time visitor sees it before the long description scrolls
+          off the fold on mobile. */}
       <header style={{ display: 'grid', gap: 6 }}>
         <p className="t-label" style={{ color: 'var(--cyan)' }}>Community</p>
         <h1 className="t-h1">{community.name}</h1>
-        {community.description && (
-          <p className="t-sm" style={{ color: 'var(--text-2)', maxWidth: 720 }}>{community.description}</p>
-        )}
       </header>
 
       <UmbraMembershipCard
@@ -69,6 +79,12 @@ function JoinInner({ cid }: { cid: string }) {
         expiresAt={membership.entitlement?.expiresAt}
         previewMode
       />
+
+      {community.description && (
+        <p className="t-sm" style={{ color: 'var(--text-2)', maxWidth: 720, margin: 0 }}>
+          {community.description}
+        </p>
+      )}
 
       <section className="card-elevated" style={{ display: 'grid', gap: 12, padding: 18 }}>
         <p className="t-label" style={{ color: 'var(--cyan)' }}>Preview</p>

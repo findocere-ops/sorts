@@ -10,6 +10,7 @@ import { useUmbraPrivacy } from '@/hooks/useUmbraPrivacy';
 import { useSolanaMembership } from '@/hooks/useSolanaMembership';
 import { UmbraMembershipCard } from '@/components/privacy/UmbraMembershipCard';
 import { TipButton } from '@/components/tip/TipButton';
+import { SkeletonCard, SkeletonFeedList } from '@/components/ui/Skeleton';
 
 interface FeedPost {
   id: string;
@@ -74,7 +75,13 @@ function FeedInner({ cid }: { cid: string }) {
     return <Shell><p className="t-sm" style={{ color: 'var(--danger)' }}>{error}</p></Shell>;
   }
   if (!community) {
-    return <Shell><p className="t-sm" style={{ color: 'var(--text-2)' }}>Loading…</p></Shell>;
+    // Day-10 B3 — skeleton instead of bare "Loading…".
+    return (
+      <Shell>
+        <SkeletonCard rows={2} />
+        <SkeletonFeedList count={3} />
+      </Shell>
+    );
   }
 
   return (

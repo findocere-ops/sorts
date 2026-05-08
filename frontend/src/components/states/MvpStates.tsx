@@ -24,6 +24,9 @@ interface EmptyStateShellProps {
   action?: StateAction;
   secondaryAction?: StateAction;
   detail?: ReactNode;
+  /** Day-10 C6 — pass `polite` on TransactionState so screen-reader users
+   *  hear pending → confirmed → failed transitions announced. */
+  ariaLive?: 'off' | 'polite' | 'assertive';
 }
 
 const toneStyles = {
@@ -64,11 +67,15 @@ function EmptyStateShell({
   action,
   secondaryAction,
   detail,
+  ariaLive,
 }: EmptyStateShellProps) {
   const styles = toneStyles[tone];
 
   return (
     <section
+      aria-live={ariaLive}
+      aria-atomic={ariaLive ? 'true' : undefined}
+      role={ariaLive ? 'status' : undefined}
       style={{
         position: 'relative',
         overflow: 'hidden',
@@ -240,73 +247,119 @@ export function NoCommunitySelected({ href = '/discover' }: { href?: string }) {
   );
 }
 
-export function NoContentPublished({ creatorHref }: { creatorHref?: string }) {
+/** Day-10 B4 — `NoContentPublished` always carries a forward action so a
+ *  visitor who reaches it isn't stuck at a dead-end empty state. */
+export function NoContentPublished({
+  creatorHref,
+  discoverHref = '/discover',
+}: {
+  creatorHref?: string;
+  discoverHref?: string;
+}) {
   return (
     <EmptyStateShell
       icon="feed"
       eyebrow="Quiet feed"
       title="No content has been published yet"
       body="This community exists, but there are no published posts to show. Members will see new posts here once the creator publishes them."
-      secondaryAction={creatorHref ? { label: 'Open studio', href: creatorHref } : undefined}
+      action={{ label: 'Browse other communities', href: discoverHref }}
+      secondaryAction={creatorHref ? { label: 'Open studio', href: creatorHref, variant: 'secondary' } : undefined}
     />
   );
 }
 
-export function MembershipNotActive({ joinHref }: { joinHref?: string }) {
+/** Day-10 B5 (extension) — chain-aware copy. Solana branch drops the
+ *  EVM-specific "Arbitrum Sepolia ETH" line. */
+export function MembershipNotActive({
+  joinHref,
+  chain = 'solana-devnet',
+}: {
+  joinHref?: string;
+  chain?: 'solana-devnet' | 'arbitrum-sepolia';
+}) {
+  const body =
+    chain === 'arbitrum-sepolia'
+      ? 'Connect the right wallet or subscribe with Arbitrum Sepolia ETH to unlock this gated feed. The creator will not receive a subscriber wallet list.'
+      : 'Connect a Solana wallet and subscribe with devnet SOL to unlock this gated feed. The creator never sees your wallet — only an aggregate count.';
   return (
     <EmptyStateShell
       icon="lock"
       eyebrow="Membership required"
       title="Your wallet does not have active access"
-      body="Connect the right wallet or subscribe with Arbitrum Sepolia ETH to unlock this gated feed. The creator will not receive a subscriber wallet list."
+      body={body}
       tone="gold"
       action={joinHref ? { label: 'View membership tiers', href: joinHref } : undefined}
     />
   );
 }
 
+/** Day-10 B5 — chain-aware. Solana branch drops EVM chain-id labels. */
 export function WrongNetworkState({
   currentChainId,
   targetChainId = 421614,
   onSwitchNetwork,
+  chain = 'solana-devnet',
 }: {
-  currentChainId?: number;
+  currentChainId?: number | string;
   targetChainId?: number;
   onSwitchNetwork?: () => void;
+  chain?: 'solana-devnet' | 'arbitrum-sepolia';
 }) {
+  if (chain === 'arbitrum-sepolia') {
+    return (
+      <EmptyStateShell
+        icon="wallet"
+        eyebrow="Wrong network"
+        title="Switch to Arbitrum Sepolia"
+        body="The legacy Arbitrum flow runs on Arbitrum Sepolia. Switch networks before deploying communities, subscribing, or renewing."
+        tone="orange"
+        action={onSwitchNetwork ? { label: 'Switch network', onClick: onSwitchNetwork } : undefined}
+        detail={
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <span>Current: <span className="t-mono">{currentChainId ?? 'unknown'}</span></span>
+            <span>Required: <span className="t-mono">{targetChainId}</span></span>
+          </div>
+        }
+      />
+    );
+  }
   return (
     <EmptyStateShell
       icon="wallet"
       eyebrow="Wrong network"
-      title="Switch to Arbitrum Sepolia"
-      body="SORTS MVP transactions run on Arbitrum Sepolia. Switch networks before deploying communities, subscribing, or renewing."
+      title="Switch your wallet to Solana devnet"
+      body="SORTS runs on Solana devnet. Open your wallet (Phantom, Solflare, Backpack) and switch to Devnet before deploying communities, subscribing, or renewing."
       tone="orange"
       action={onSwitchNetwork ? { label: 'Switch network', onClick: onSwitchNetwork } : undefined}
       detail={
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <span>Current: <span className="t-mono">{currentChainId ?? 'unknown'}</span></span>
-          <span>Required: <span className="t-mono">{targetChainId}</span></span>
+          <span>Required: <span className="t-mono">solana-devnet</span></span>
         </div>
       }
     />
   );
 }
 
+/** Day-10 B5 + C6 — chain-aware explorer label + aria-live announcer. */
 export function TransactionState({
   status,
   txHash,
   error,
   explorerUrl,
   onReset,
+  chain = 'solana-devnet',
 }: {
   status: TransactionStatus;
   txHash?: string | null;
   error?: string | null;
   explorerUrl?: string;
   onReset?: () => void;
+  chain?: 'solana-devnet' | 'arbitrum-sepolia';
 }) {
-  const copy = getTransactionCopy(status);
+  const copy = getTransactionCopy(status, chain);
   const tone = status === 'transaction-confirmed' ? 'success' : status === 'transaction-failed' ? 'danger' : 'cyan';
+  const explorerLabel = chain === 'arbitrum-sepolia' ? 'View on Arbiscan' : 'View on Solana Explorer';
 
   return (
     <EmptyStateShell
@@ -315,7 +368,8 @@ export function TransactionState({
       title={copy.title}
       body={error || copy.body}
       tone={tone}
-      action={explorerUrl && txHash ? { label: 'View on Arbiscan', href: explorerUrl, variant: 'secondary' } : undefined}
+      ariaLive="polite"
+      action={explorerUrl && txHash ? { label: explorerLabel, href: explorerUrl, variant: 'secondary' } : undefined}
       secondaryAction={onReset && status === 'transaction-failed' ? { label: 'Dismiss', onClick: onReset } : undefined}
       detail={txHash ? <span className="t-mono">{txHash}</span> : undefined}
     />
@@ -341,7 +395,12 @@ export function DataProtectorNotConfigured({ docsHref }: { docsHref?: string }) 
   );
 }
 
-function getTransactionCopy(status: TransactionStatus) {
+function getTransactionCopy(
+  status: TransactionStatus,
+  chain: 'solana-devnet' | 'arbitrum-sepolia' = 'solana-devnet',
+) {
+  const isSolana = chain === 'solana-devnet';
+  const networkLabel = isSolana ? 'Solana devnet' : 'Arbitrum Sepolia';
   switch (status) {
     case 'wallet-not-connected':
       return {
@@ -352,14 +411,16 @@ function getTransactionCopy(status: TransactionStatus) {
     case 'wrong-network':
       return {
         eyebrow: 'Wrong network',
-        title: 'Switch to Arbitrum Sepolia',
-        body: 'This transaction must be sent on Arbitrum Sepolia.',
+        title: isSolana ? 'Switch your wallet to Solana devnet' : 'Switch to Arbitrum Sepolia',
+        body: `This transaction must be sent on ${networkLabel}.`,
       };
     case 'factory-not-configured':
       return {
-        eyebrow: 'Contract missing',
-        title: 'Factory address is not configured',
-        body: 'Deploy SortsFactory and set NEXT_PUBLIC_SORTS_FACTORY_ADDRESS.',
+        eyebrow: isSolana ? 'Program missing' : 'Contract missing',
+        title: isSolana ? 'Solana program is not configured' : 'Factory address is not configured',
+        body: isSolana
+          ? 'Set NEXT_PUBLIC_SOLANA_PROGRAM_ID and redeploy.'
+          : 'Deploy SortsFactory and set NEXT_PUBLIC_SORTS_FACTORY_ADDRESS.',
       };
     case 'awaiting-signature':
       return {
@@ -370,14 +431,14 @@ function getTransactionCopy(status: TransactionStatus) {
     case 'transaction-pending':
       return {
         eyebrow: 'Transaction pending',
-        title: 'Waiting for Arbitrum Sepolia',
+        title: `Waiting for ${networkLabel}`,
         body: 'The transaction was submitted and is waiting for confirmation.',
       };
     case 'transaction-confirmed':
       return {
         eyebrow: 'Confirmed',
         title: 'Transaction confirmed',
-        body: 'The transaction is confirmed on Arbitrum Sepolia.',
+        body: `The transaction is confirmed on ${networkLabel}.`,
       };
     case 'transaction-failed':
       return {
