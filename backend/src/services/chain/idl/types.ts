@@ -37,19 +37,42 @@ export interface CommunityAccount {
   bump: number;
 }
 
-/** Mirrors `Subscription` in src/state.rs.
+/** Mirrors `Subscription` in src/state.rs (v3 — pseudonymous + Cloak dual-path).
  *
- * Privacy: `tierCommitment` is keccak/PDA-style derive over
- * `("SORTS_TIER_V1", level, saltPubkey)`. The plaintext level is NEVER stored
- * on the account — only this commitment plus the salt that lets the holder
- * recompute it.
+ * Privacy posture:
+ *
+ * **Tier 1.2 (subscriber identity)** — `subscriberCommitment` replaces the
+ * plaintext subscriber pubkey:
+ *  - Account holds `subscriberCommitment = derive("SORTS_SUB_V1" ||
+ *    subscriber_pubkey || nonce)`. The nonce is a 32-byte secret derived
+ *    client-side from `sha256(wallet.signMessage("SORTS-NONCE-V1:" ||
+ *    community_pubkey))`. ed25519 signatures are deterministic (RFC 8032), so
+ *    the subscriber re-derives the same nonce on every visit without backend
+ *    or browser state.
+ *
+ * **Tier 1.3 (payment-rail privacy)** — `cloakPaymentSigs` records the Cloak
+ * transfer signatures when the subscriber paid via Cloak:
+ *  - All-zero (default, devnet) → transparent `system_program::transfer`
+ *    payment moved funds. Lamport movement visible on Solana Explorer
+ *    (Tier 1.3 leak intentionally documented).
+ *  - Non-zero (mainnet, Cloak path) → payment moved off-band via Cloak; the
+ *    program recorded the two 32-byte transfer signatures concatenated. An
+ *    off-chain verifier (planned v2 cron) confirms the recorded signatures
+ *    resolve to genuine Cloak `transact` calls. Cloak's program is mainnet-
+ *    only, so this slot is all-zero on devnet builds.
+ *
+ * **Tier-level secrecy** — `tierCommitment` is the derive over
+ * `("SORTS_TIER_V1", level, saltPubkey)`. Plaintext level never stored.
+ *
+ * Account size 202 bytes (was 138 in v2).
  */
 export interface SubscriptionAccount {
   community: PublicKey;
-  subscriber: PublicKey;
+  subscriberCommitment: Uint8Array; // [u8; 32]
   expiryTs: bigint; // i64 unix seconds
   tierCommitment: Uint8Array; // [u8; 32]
   saltPubkey: PublicKey;
+  cloakPaymentSigs: Uint8Array; // [u8; 64] — all-zero on transparent path
   bump: number;
 }
 

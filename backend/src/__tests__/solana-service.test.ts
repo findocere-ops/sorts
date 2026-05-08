@@ -38,12 +38,22 @@ describe('SolanaService', () => {
       expect(a.pda.toBase58()).not.toBe(b.pda.toBase58());
     });
 
-    it('derives a deterministic Subscription PDA for (community, subscriber)', () => {
+    it('derives a deterministic Subscription PDA for (community, commitment)', () => {
       const community = new PublicKey('11111111111111111111111111111112');
-      const subscriber = new PublicKey('11111111111111111111111111111113');
-      const a = svc.subscriptionPda(community, subscriber);
-      const b = svc.subscriptionPda(community, subscriber);
+      const commitment = new Uint8Array(32).fill(0xab);
+      const a = svc.subscriptionPda(community, commitment);
+      const b = svc.subscriptionPda(community, commitment);
       expect(a.pda.toBase58()).toBe(b.pda.toBase58());
+    });
+
+    it('rejects a non-32-byte commitment', () => {
+      const community = new PublicKey('11111111111111111111111111111112');
+      expect(() => svc.subscriptionPda(community, new Uint8Array(31))).toThrow(
+        /must be exactly 32 bytes/,
+      );
+      expect(() => svc.subscriptionPda(community, new Uint8Array(33))).toThrow(
+        /must be exactly 32 bytes/,
+      );
     });
   });
 
@@ -92,36 +102,74 @@ describe('SolanaService', () => {
   });
 
   describe('decodeSubscription', () => {
-    it('decodes a well-formed Subscription buffer; never exposes a plaintext level', () => {
-      const data = Buffer.alloc(138);
+    it('decodes a well-formed v3 Subscription buffer; exposes commitment + cloak sigs slot, never plaintext subscriber or level', () => {
+      const data = Buffer.alloc(202);
       let off = 0;
       data.writeUInt8(3, off); off += 1; // discriminator
       const community = new PublicKey('11111111111111111111111111111112');
-      const subscriber = new PublicKey('11111111111111111111111111111113');
+      // v2: byte 33-65 holds subscriber_commitment, NOT subscriber pubkey.
+      const subscriberCommitment = Buffer.alloc(32, 0xa5);
       const salt = new PublicKey('11111111111111111111111111111114');
+      // v3: bytes 137-201 hold cloak_payment_sigs. Use a non-zero pattern so
+      // the test catches a layout drift if the slot is read at the wrong offset.
+      const cloakSigs = Buffer.alloc(64, 0xee);
       Buffer.from(community.toBuffer()).copy(data, off); off += 32;
-      Buffer.from(subscriber.toBuffer()).copy(data, off); off += 32;
+      subscriberCommitment.copy(data, off); off += 32;
       data.writeBigInt64LE(1_800_000_000n, off); off += 8;
-      Buffer.alloc(32, 0xcc).copy(data, off); off += 32;
+      Buffer.alloc(32, 0xcc).copy(data, off); off += 32; // tier_commitment
       Buffer.from(salt.toBuffer()).copy(data, off); off += 32;
+      cloakSigs.copy(data, off); off += 64;
       data.writeUInt8(255, off);
 
       const out = decodeSubscription(data)!;
       expect(out.community.toBase58()).toBe(community.toBase58());
-      expect(out.subscriber.toBase58()).toBe(subscriber.toBase58());
+      expect(Array.from(out.subscriberCommitment)).toEqual(Array.from(subscriberCommitment));
       expect(out.expiryTs).toBe(1_800_000_000n);
       expect(out.tierCommitment.length).toBe(32);
       expect(out.saltPubkey.toBase58()).toBe(salt.toBase58());
+      expect(out.cloakPaymentSigs.length).toBe(64);
+      expect(Array.from(out.cloakPaymentSigs)).toEqual(Array.from(cloakSigs));
       expect(out.bump).toBe(255);
 
-      // Privacy assertion: the decoded type has NO `tier`, `level`, or
-      // `tierLevel` field. Only the commitment + salt.
+      // Privacy assertion: the decoded type has NO `tier`, `level`, `tierLevel`,
+      // or plaintext `subscriber` field. Only `subscriberCommitment` (Tier 1.2)
+      // plus the tier commitment, salt, and Tier 1.3 Cloak sigs slot.
       expect(Object.keys(out)).toEqual(
         expect.arrayContaining([
-          'community', 'subscriber', 'expiryTs', 'tierCommitment', 'saltPubkey', 'bump',
+          'community', 'subscriberCommitment', 'expiryTs',
+          'tierCommitment', 'saltPubkey', 'cloakPaymentSigs', 'bump',
         ]),
       );
-      expect(Object.keys(out)).not.toEqual(expect.arrayContaining(['tier', 'level', 'tierLevel']));
+      expect(Object.keys(out)).not.toEqual(
+        expect.arrayContaining(['tier', 'level', 'tierLevel', 'subscriber']),
+      );
+    });
+
+    it('decodes the all-zero (devnet, transparent) Cloak sigs slot without errors', () => {
+      const data = Buffer.alloc(202);
+      let off = 0;
+      data.writeUInt8(3, off); off += 1;
+      const community = new PublicKey('11111111111111111111111111111112');
+      const subscriberCommitment = Buffer.alloc(32, 0x77);
+      const salt = new PublicKey('11111111111111111111111111111114');
+      Buffer.from(community.toBuffer()).copy(data, off); off += 32;
+      subscriberCommitment.copy(data, off); off += 32;
+      data.writeBigInt64LE(1_800_000_000n, off); off += 8;
+      Buffer.alloc(32, 0).copy(data, off); off += 32;
+      Buffer.from(salt.toBuffer()).copy(data, off); off += 32;
+      // cloak_payment_sigs intentionally left as zeros (devnet default)
+      off += 64;
+      data.writeUInt8(254, off);
+
+      const out = decodeSubscription(data)!;
+      expect(out.cloakPaymentSigs.length).toBe(64);
+      expect(out.cloakPaymentSigs.every((b) => b === 0)).toBe(true);
+    });
+
+    it('rejects pre-v3 buffers (138 bytes) — layout drift guard', () => {
+      const old = Buffer.alloc(138);
+      old.writeUInt8(3, 0);
+      expect(decodeSubscription(old)).toBeNull();
     });
   });
 
@@ -135,15 +183,28 @@ describe('SolanaService', () => {
     });
   });
 
-  describe('checkAccess privacy carve-out', () => {
-    it('accepts requiredTier in the signature but ignores it (returns false on missing PDA)', async () => {
+  describe('checkAccess privacy carve-out (v2 — commitment-based)', () => {
+    it('rejects wallet-based checkAccess on Solana with a clear redirect message', async () => {
       const svc = new SolanaService({ rpcUrl: 'https://invalid.local', programId: PROGRAM_ID });
-      // Spy: replace fetchSubscription so we never hit the network.
-      jest.spyOn(svc, 'fetchSubscription').mockResolvedValue(null);
-      const r1 = await svc.checkAccess('11111111111111111111111111111112', '11111111111111111111111111111113', 1);
-      const r2 = await svc.checkAccess('11111111111111111111111111111112', '11111111111111111111111111111113', 3);
+      await expect(
+        svc.checkAccess('11111111111111111111111111111112', '11111111111111111111111111111113', 1),
+      ).rejects.toThrow(/checkAccessByCommitment/);
+    });
+
+    it('checkAccessByCommitment returns false on missing PDA, regardless of commitment bytes', async () => {
+      const svc = new SolanaService({ rpcUrl: 'https://invalid.local', programId: PROGRAM_ID });
+      // Spy: replace fetchSubscriptionByCommitment so we never hit the network.
+      jest.spyOn(svc, 'fetchSubscriptionByCommitment').mockResolvedValue(null);
+      const r1 = await svc.checkAccessByCommitment(
+        '11111111111111111111111111111112',
+        new Uint8Array(32).fill(0x11),
+      );
+      const r2 = await svc.checkAccessByCommitment(
+        '11111111111111111111111111111112',
+        new Uint8Array(32).fill(0x99),
+      );
       expect(r1).toBe(false);
-      expect(r2).toBe(false); // no PDA → false regardless of tier — proves the on-chain program never sees `requiredTier`
+      expect(r2).toBe(false);
     });
   });
 });

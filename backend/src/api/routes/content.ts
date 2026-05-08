@@ -69,7 +69,23 @@ export function contentRouter(db: Database, deps: RouterDeps = { privyService: n
 
       const posts = svc.listPublishedMetadata(communityId);
       if (!wallet) {
-        return res.json({ success: true, data: posts.map(p => lockPost(p)) });
+        // Day-10 A5 — anonymous callers (no wallet) get the SAME post-body
+        // policy as non-member authenticated callers further below: only
+        // posts the creator marked `preview_eligible = true` come back
+        // with `locked: false`; every other post stays locked.
+        //
+        // Privacy invariant 9 still holds: only `preview_eligible` posts
+        // unlock; everything else stays locked. The change is in WHO can
+        // hit the unlocked path, not WHAT unlocks. The previewQuotaGate
+        // middleware still caps the unique-community footprint via the
+        // X-Session-Token header (set client-side). See:
+        //   docs/PRIVACY_REVIEW.md (PG-016 entry)
+        //   docs/UX_RESEARCH_FINDINGS.md §A5 (rationale + risk callout)
+        const anonPreview = posts.map((post) => {
+          if (post.preview_eligible) return unlockMetadata(post);
+          return lockPost(post);
+        });
+        return res.json({ success: true, data: anonPreview });
       }
 
       const proofOk = await verifyContentReadProof(req, communityId, wallet);

@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Badge, PrivacyBadge } from '@/components/ui/Badge';
 import { MarketingHeader } from '@/components/layout/MarketingHeader';
@@ -8,10 +8,16 @@ import { SortsLogoMark } from '@/components/brand/SortsLogoMark';
 import { SortsLogoFull } from '@/components/brand/SortsLogoFull';
 import { Icon } from '@/components/icons/Icon';
 import { PLATFORM_PLANS } from '@/lib/constants';
+import { DemoStatusCard } from '@/components/states/DemoStatusCard';
+
+/** Day-10 A3 — id of the seeded demo community. Mirrors
+ *  `backend/scripts/seed-devnet-demo.ts` so the landing preview reads
+ *  live aggregate stats instead of a hardcoded fixture. */
+const DEMO_COMMUNITY_ID = 'demo-research';
 
 export default function LandingPage() {
   return (
-    <div className="page-shell">
+    <div className="page-shell" id="main" tabIndex={-1}>
       <MarketingHeader />
       <HeroSection />
       <TrustStrip />
@@ -19,10 +25,30 @@ export default function LandingPage() {
       <PrivacyProtocol />
       <RoleSplit />
       <PrivacyArchitecture />
+      <DemoStatusSection />
       <FAQSection />
       <CTASection />
       <LandingFooter />
     </div>
+  );
+}
+
+/** Day-10 A3 — mounts DemoStatusCard between PrivacyArchitecture and the
+ *  FAQ. Pairs every "pre-alpha" disclosure on the page with the calibrated
+ *  "what works today" panel so visitors don't read the demo as broken. */
+function DemoStatusSection() {
+  return (
+    <section className="lp-section" id="demo-status">
+      <div className="section-eyebrow">Status</div>
+      <h2 className="section-title">What works in the demo today.</h2>
+      <p className="section-sub mb-8">
+        Honest snapshot. Rows mirror the README "Current Demo Status" table —
+        every claim links to a file or a test in the repo.
+      </p>
+      <div className="mt-6" style={{ maxWidth: 760, margin: '0 auto' }}>
+        <DemoStatusCard />
+      </div>
+    </section>
   );
 }
 
@@ -41,7 +67,7 @@ function HeroSection() {
       />
 
       <div style={{ position: 'relative', maxWidth: 880, width: '100%' }}>
-        {/* Status pill */}
+        {/* Status pill — Day-10 D1: visitor-frame copy, not internal-team copy. */}
         <div
           id="hero-status-pill"
           style={{
@@ -53,7 +79,7 @@ function HeroSection() {
           }}
         >
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }} />
-          Solana devnet launch sprint
+          Live on Solana devnet — try the demo
         </div>
 
         {/* Headline */}
@@ -71,20 +97,26 @@ function HeroSection() {
           No public subscriber list. No leaked membership graph. Creator analytics stay aggregate-only.
         </p>
 
-        {/* CTAs */}
+        {/* CTAs — Day-10 A2: re-ordered. Primary is the wallet-free demo so a
+            first-time visitor can see the product work without connecting
+            anything. Secondary is the creator entry. Tertiary is the
+            subscriber entry. "View protocol demo" dropped — it duplicated
+            "See it work". */}
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 36 }}>
-          <Link href="/studio/create" id="hero-cta-create">
+          <Link href="/demo" id="hero-cta-demo">
             <Button variant="primary" size="xl">
+              <Icon name="bolt" size={16} /> See it work — 90 second demo
+            </Button>
+          </Link>
+          <Link href="/studio/create" id="hero-cta-create">
+            <Button variant="secondary" size="xl">
               <Icon name="plus" size={16} /> Create a community
             </Button>
           </Link>
           <Link href="/role" id="hero-cta-join">
-            <Button variant="secondary" size="xl">
+            <Button variant="outline" size="xl">
               <Icon name="invite" size={16} /> Join a community
             </Button>
-          </Link>
-          <Link href="/role" id="hero-cta-demo">
-            <Button variant="outline" size="xl">View protocol demo</Button>
           </Link>
         </div>
 
@@ -110,7 +142,67 @@ function HeroSection() {
   );
 }
 
+/** Day-10 A1 — replaces the hardcoded "1,247 members / 89% / 18.42 USDC"
+ *  fixture with a live fetch against the seeded `demo-research` community.
+ *  The fetch uses `cache: 'force-cache'` + `next: { revalidate: 60 }` so the
+ *  landing doesn't hammer the backend on every visit. On fetch failure or
+ *  zero-state, falls back to em-dash placeholders rather than fake numbers
+ *  — A1's central concern is "trust collapses on a single mismatch". */
 function CommunityPreviewCard() {
+  const [stats, setStats] = useState<{
+    totalMembers: number;
+    activeRatio: number;
+    totalRevenueDisplay: string;
+  } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+        const res = await fetch(
+          `${apiUrl}/api/analytics/community/${DEMO_COMMUNITY_ID}`,
+          { next: { revalidate: 60 } } as RequestInit & { next?: { revalidate?: number } },
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const json = (await res.json()) as {
+          success: boolean;
+          data?: { totalMembers: number; activeRatio: number; totalRevenueDisplay: string };
+        };
+        if (cancelled) return;
+        if (json.success && json.data) setStats(json.data);
+      } catch {
+        // Soft fail — render placeholders. Honest is better than wrong.
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const display = (() => {
+    if (!loaded) {
+      return [
+        { label: 'Total members', value: '—', sub: 'loading…' },
+        { label: 'Active ratio', value: '—', sub: 'loading…' },
+        { label: 'Revenue', value: '—', sub: 'loading…' },
+      ];
+    }
+    if (!stats) {
+      return [
+        { label: 'Total members', value: '—', sub: 'live fetch unavailable' },
+        { label: 'Active ratio', value: '—', sub: 'live fetch unavailable' },
+        { label: 'Revenue', value: '—', sub: 'live fetch unavailable' },
+      ];
+    }
+    return [
+      { label: 'Total members', value: stats.totalMembers.toString(), sub: 'aggregate only' },
+      { label: 'Active ratio', value: `${(stats.activeRatio * 100).toFixed(0)}%`, sub: 'no individual data' },
+      { label: 'Revenue', value: stats.totalRevenueDisplay, sub: 'live from devnet' },
+    ];
+  })();
+
   return (
     <div className="preview-card" id="hero-preview-card">
       {/* Glow */}
@@ -119,11 +211,11 @@ function CommunityPreviewCard() {
       {/* Community header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
         <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--cyan-dim)', border: '1px solid var(--border-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Space Grotesk, sans-serif', fontSize: 20, fontWeight: 700, color: 'var(--cyan)', flexShrink: 0 }}>
-          α
+          R
         </div>
         <div>
-          <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', marginBottom: 2 }}>Alpha Signals</p>
-          <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Solana devnet · private subscription rails</p>
+          <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', marginBottom: 2 }}>On-chain Research Lab</p>
+          <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Solana devnet · seeded demo community · live data</p>
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <PrivacyBadge />
@@ -132,11 +224,7 @@ function CommunityPreviewCard() {
 
       {/* Stats row */}
       <div className="g3" style={{ gap: 12, marginBottom: 16 }}>
-        {[
-          { label: 'Total members', value: '1,247', sub: 'aggregate only' },
-          { label: 'Active ratio', value: '89%', sub: 'no individual data' },
-          { label: 'Revenue (USDC)', value: '18.42', sub: 'total collected' },
-        ].map(({ label, value, sub }) => (
+        {display.map(({ label, value, sub }) => (
           <div key={label} style={{ background: 'rgba(12,19,26,0.8)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '12px 14px' }}>
             <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>{label}</p>
             <p style={{ fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: 'var(--text-1)', letterSpacing: '-0.03em' }}>{value}</p>
@@ -324,7 +412,7 @@ function PrivacyArchitecture() {
           {[
             { t: 'Launch focus', items: ['Solana devnet', 'Privy wallet UX', 'Umbra hidden state', 'IKA dWallet capability'] },
             { t: 'Privacy stance', items: ['No member list', 'Aggregate-only analytics', 'Non-leaky access checks', 'Creator-selected previews'] },
-            { t: 'Adapter history', items: ['Arbitrum USDC contracts', 'Hardhat tests', 'Chain adapter pattern', 'Legacy EVM path intact'] },
+            { t: 'Architecture', items: ['Quasar Solana program', 'Chain adapter pattern', 'Telegram access rail', 'Aggregate-only API surface'] },
           ].map((s, i) => (
             <div key={i}>
               <div className="t-label mb-3">{s.t}</div>
@@ -364,7 +452,7 @@ function FAQSection() {
     },
     {
       q: 'What is the protocol fee?',
-      a: 'The current model targets a subscription take rate for SORTS. Legacy Arbitrum contracts use a 5% protocol fee, while Solana fee routing will be documented as the adapter lands.',
+      a: 'SORTS targets a subscription take rate of 2-5% on creator revenue. The current Solana devnet build documents fee routing alongside the on-chain adapter; final mainnet fee parameters will be locked before public launch.',
     },
     {
       q: 'Is this production-ready?',

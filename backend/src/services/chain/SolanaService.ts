@@ -16,13 +16,23 @@ import {
 /**
  * SolanaService — Phase 2 chain adapter targeting the deployed sorts_community
  * program on Solana devnet. Mirrors the IChainService surface exposed by
- * ArbitrumService so route handlers stay chain-agnostic.
+ * ArbitrumService so route handlers stay chain-agnostic where possible.
  *
- * Privacy invariants enforced here (must match programs/sorts-community/src):
- *  - `checkAccess` ignores `requiredTier` (the on-chain program never returns a
- *    tier — only liveness). Returns true iff the subscription PDA exists and
- *    `expiry_ts > now`. `requiredTier` is accepted only to satisfy the EVM
- *    interface signature.
+ * v2 — subscriber pseudonymization (Tier 1.2 mitigation):
+ *  - On-chain Subscription accounts no longer store the subscriber's plaintext
+ *    pubkey. They store a `subscriberCommitment = derive("SORTS_SUB_V1" ||
+ *    subscriber_pubkey || nonce)` where the nonce is a secret known only to
+ *    the subscriber (derived from a deterministic wallet signature).
+ *  - Backend therefore CANNOT look up subscriptions by `(community, wallet)`
+ *    alone. Wallet-only legacy methods throw with a clear redirect to the
+ *    `*ByCommitment` variants. Route handlers must accept the commitment
+ *    bytes from the frontend (the frontend computes them locally from
+ *    `(subscriber, nonce)` and never sends the nonce).
+ *  - This means there is no way for the backend to enumerate subscribers, by
+ *    design — the only thing it can do is verify a presented commitment is
+ *    bound to a live subscription.
+ *
+ * Other privacy invariants enforced here (must match programs/sorts-community):
  *  - `getAggregateStats` returns counters only — no per-member data.
  *  - `getCreatorCommunities` uses a `getProgramAccounts` memcmp filter against
  *    the `creator` field of Community; it returns Community PDAs, never any
@@ -70,21 +80,83 @@ export class SolanaService implements IChainService {
     throw new Error('renewSubscription must be called from the frontend via the Solana wallet adapter');
   }
 
-  // ── Reads ────────────────────────────────────────────────────────────────
+  // ── Reads — wallet-only API (legacy / cross-chain compat) ────────────────
+  //
+  // These signatures exist because IChainService is shared with the legacy
+  // Arbitrum adapter. On Solana v2 the subscriber's wallet alone is NOT enough
+  // to look up a subscription — the on-chain account is keyed by a commitment
+  // the subscriber holds. Callers must use `*ByCommitment` instead.
 
-  /** True iff the (community, member) Subscription PDA exists and has not expired.
-   *  `requiredTier` is intentionally ignored — the on-chain program does not
-   *  expose a member's tier. */
   async checkAccess(
-    communityAddress: string,
-    memberWallet: string,
+    _communityAddress: string,
+    _memberWallet: string,
     _requiredTier: 1 | 2 | 3,
   ): Promise<boolean> {
-    const sub = await this.fetchSubscription(communityAddress, memberWallet);
+    throw new Error(
+      'SolanaService.checkAccess(wallet) is unavailable post-pseudonymization — ' +
+        'subscriber identity is hidden behind a commitment. Use ' +
+        'checkAccessByCommitment(community, commitmentBytes) and supply the ' +
+        '32-byte commitment computed by the subscriber on the frontend.',
+    );
+  }
+
+  async getMembershipStatus(
+    _communityAddress: string,
+    _memberWallet: string,
+  ): Promise<MembershipStatus> {
+    throw new Error(
+      'SolanaService.getMembershipStatus(wallet) is unavailable post-pseudonymization. ' +
+        'Use getMembershipStatusByCommitment(community, commitmentBytes).',
+    );
+  }
+
+  // ── Reads — commitment-based API (v2 privacy-preserving path) ───────────
+
+  /** True iff the (community, commitment) Subscription PDA exists and has not expired.
+   *  The commitment is supplied by the frontend, which computed it locally
+   *  from `(subscriber_pubkey, nonce)` where the nonce is derived from a
+   *  deterministic wallet signature. The backend never sees the wallet. */
+  async checkAccessByCommitment(
+    communityAddress: string,
+    commitmentBytes: Uint8Array,
+  ): Promise<boolean> {
+    const sub = await this.fetchSubscriptionByCommitment(communityAddress, commitmentBytes);
     if (!sub) return false;
     const nowSec = BigInt(Math.floor(Date.now() / 1000));
     return sub.expiryTs > nowSec;
   }
+
+  async getMembershipStatusByCommitment(
+    communityAddress: string,
+    commitmentBytes: Uint8Array,
+  ): Promise<MembershipStatus> {
+    const sub = await this.fetchSubscriptionByCommitment(communityAddress, commitmentBytes);
+    if (!sub) {
+      return {
+        hasAccess: false,
+        isExpired: false,
+        tierLevel: null,
+        expiresAt: null,
+        expiresInDays: null,
+      };
+    }
+    const nowSec = BigInt(Math.floor(Date.now() / 1000));
+    const expirySec = Number(sub.expiryTs);
+    const isExpired = sub.expiryTs <= nowSec;
+    const expiresAt = new Date(expirySec * 1000).toISOString();
+    const expiresInDays = isExpired
+      ? 0
+      : Math.ceil((expirySec - Number(nowSec)) / 86400);
+    return {
+      hasAccess: !isExpired,
+      isExpired,
+      tierLevel: null, // privacy invariant — never expose
+      expiresAt,
+      expiresInDays,
+    };
+  }
+
+  // ── Aggregate + creator listing (unchanged) ──────────────────────────────
 
   async getAggregateStats(communityAddress: string): Promise<AggregateStats> {
     const community = await this.fetchCommunity(communityAddress);
@@ -108,30 +180,6 @@ export class SolanaService implements IChainService {
       totalRevenueWei: revenue.toString(),
       totalRevenueDisplay: `${formatSol(revenue)} SOL`,
       activeRatio: total > 0 ? active / total : 0,
-    };
-  }
-
-  async getMembershipStatus(
-    communityAddress: string,
-    memberWallet: string,
-  ): Promise<MembershipStatus> {
-    const sub = await this.fetchSubscription(communityAddress, memberWallet);
-    if (!sub) {
-      return { hasAccess: false, isExpired: false, tierLevel: null, expiresAt: null, expiresInDays: null };
-    }
-    const nowSec = BigInt(Math.floor(Date.now() / 1000));
-    const expirySec = Number(sub.expiryTs);
-    const isExpired = sub.expiryTs <= nowSec;
-    const expiresAt = new Date(expirySec * 1000).toISOString();
-    const expiresInDays = isExpired
-      ? 0
-      : Math.ceil((expirySec - Number(nowSec)) / 86400);
-    return {
-      hasAccess: !isExpired,
-      isExpired,
-      tierLevel: null, // privacy invariant — never expose
-      expiresAt,
-      expiresInDays,
     };
   }
 
@@ -163,9 +211,18 @@ export class SolanaService implements IChainService {
     return { pda, bump };
   }
 
-  subscriptionPda(community: PublicKey, subscriber: PublicKey): { pda: PublicKey; bump: number } {
+  /** Subscription PDA seed: `[b"subscription", community, subscriber_commitment]`.
+   *  The commitment is opaque 32 bytes — the program treats it as an Address.
+   */
+  subscriptionPda(
+    community: PublicKey,
+    commitmentBytes: Uint8Array,
+  ): { pda: PublicKey; bump: number } {
+    if (commitmentBytes.length !== 32) {
+      throw new Error('subscriber commitment must be exactly 32 bytes');
+    }
     const [pda, bump] = PublicKey.findProgramAddressSync(
-      [Buffer.from('subscription'), community.toBuffer(), subscriber.toBuffer()],
+      [Buffer.from('subscription'), community.toBuffer(), Buffer.from(commitmentBytes)],
       this.programId,
     );
     return { pda, bump };
@@ -179,20 +236,18 @@ export class SolanaService implements IChainService {
     return decodeCommunity(info.data);
   }
 
-  /** Resolves the Subscription PDA for `(community, subscriber)` and decodes it. */
-  async fetchSubscription(
+  /** Resolves the Subscription PDA for `(community, commitment)` and decodes it. */
+  async fetchSubscriptionByCommitment(
     communityAddress: string,
-    subscriberWallet: string,
+    commitmentBytes: Uint8Array,
   ): Promise<SubscriptionAccount | null> {
     let community: PublicKey;
-    let subscriber: PublicKey;
     try {
       community = new PublicKey(communityAddress);
-      subscriber = new PublicKey(subscriberWallet);
     } catch {
       return null;
     }
-    const { pda } = this.subscriptionPda(community, subscriber);
+    const { pda } = this.subscriptionPda(community, commitmentBytes);
     const info = await this.connection.getAccountInfo(pda);
     if (!info) return null;
     return decodeSubscription(info.data);
@@ -200,6 +255,16 @@ export class SolanaService implements IChainService {
 }
 
 // ── Decoders (hand-written; Quasar uses single-byte account discriminators) ──
+//
+// Subscription layout (v3 — pseudonymous + Cloak dual-path, 202 bytes):
+//   byte 0           = discriminator (u8 = 3)
+//   bytes 1..33      = community: Address (32)
+//   bytes 33..65     = subscriber_commitment: [u8; 32]    ← Tier 1.2 (was plaintext in v1)
+//   bytes 65..73     = expiry_ts: i64 (8)
+//   bytes 73..105    = tier_commitment: [u8; 32]
+//   bytes 105..137   = salt_pubkey: Address (32)
+//   bytes 137..201   = cloak_payment_sigs: [u8; 64]       ← Tier 1.3 (new in v3)
+//   byte 201         = bump (u8)
 
 function decodeCommunity(data: Buffer): CommunityAccount | null {
   if (data.length < 179) return null;
@@ -230,16 +295,25 @@ function decodeCommunity(data: Buffer): CommunityAccount | null {
 }
 
 function decodeSubscription(data: Buffer): SubscriptionAccount | null {
-  if (data.length < 138) return null;
+  if (data.length < 202) return null;
   if (data.readUInt8(0) !== SUBSCRIPTION_DISCRIMINATOR) return null;
   let off = 1;
   const community = new PublicKey(data.subarray(off, off + 32)); off += 32;
-  const subscriber = new PublicKey(data.subarray(off, off + 32)); off += 32;
+  const subscriberCommitment = new Uint8Array(data.subarray(off, off + 32)); off += 32;
   const expiryTs = data.readBigInt64LE(off); off += 8;
   const tierCommitment = new Uint8Array(data.subarray(off, off + 32)); off += 32;
   const saltPubkey = new PublicKey(data.subarray(off, off + 32)); off += 32;
+  const cloakPaymentSigs = new Uint8Array(data.subarray(off, off + 64)); off += 64;
   const bump = data.readUInt8(off);
-  return { community, subscriber, expiryTs, tierCommitment, saltPubkey, bump };
+  return {
+    community,
+    subscriberCommitment,
+    expiryTs,
+    tierCommitment,
+    saltPubkey,
+    cloakPaymentSigs,
+    bump,
+  };
 }
 
 function discriminatorBase58(disc: number): string {

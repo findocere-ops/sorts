@@ -143,24 +143,41 @@ pub struct Community {
 }
 
 #[account(discriminator = 3, set_inner)]
-#[seeds(b"subscription", community: Address, subscriber: Address)]
+#[seeds(b"subscription", community: Address, subscriber_commitment: Address)]
 pub struct Subscription {
     community: Address,
-    subscriber: Address,
+    subscriber_commitment: [u8; 32], // derive("SORTS_SUB_V1" || subscriber || nonce)
     expiry_ts: i64,
-    tier_commitment: [u8; 32],     // derive("SORTS_TIER_V1" || level || salt_pubkey)
+    tier_commitment: [u8; 32],       // derive("SORTS_TIER_V1" || level || salt_pubkey)
     salt_pubkey: Address,
     bump: u8,
 }
 ```
 
+The plaintext subscriber pubkey is **not** stored on-chain (Tier 1.2
+mitigation, see `docs/PRIVACY_REVIEW.md` §"Run — 2026-05-06 (v2)").
+Instead the account body holds a 32-byte `subscriber_commitment`
+derived from `(subscriber_pubkey, nonce)`, where the nonce is a
+deterministic wallet-signature-derived secret known only to the
+subscriber. `getProgramAccounts(filter=memcmp(disc=3))` therefore
+returns blinded pseudonyms only, not a member graph.
+
 ### 4.2 Instructions
 
-| disc | name | args |
-|---|---|---|
-| 0 | `initialize_community` | `name_hash[32]`, `symbol_hash[32]`, `tier_count: u8`, `(u64 price, i64 duration) × 3` |
-| 1 | `subscribe` | `level: u8`, `salt_pubkey: Pubkey` |
-| 2 | `renew_subscription` | `level: u8` |
+| disc | name | args | data length |
+|---|---|---|---|
+| 0 | `initialize_community` | `name_hash[32]`, `symbol_hash[32]`, `tier_count: u8`, `(u64 price, i64 duration) × 3` | 114 |
+| 1 | `subscribe` | `level: u8`, `commitment: Address`, `nonce: [u8;32]`, `salt_pubkey: Address` | 98 |
+| 2 | `renew_subscription` | `level: u8`, `commitment: Address`, `nonce: [u8;32]` | 66 |
+
+The `commitment` arg is the same 32-byte value the program stores in
+the Subscription account; the handler verifies
+`subscriber_commitment(self.subscriber.address(), &nonce, &crate::ID)
+== commitment` so a third party who learns a public commitment cannot
+squat on it without owning the producing wallet. Frontend builders
+generate the pair via `deriveSubscriberCommitment` +
+`buildNonceCanonicalMessage` + `nonceFromSignature` in
+[frontend/src/lib/solana/program.ts](frontend/src/lib/solana/program.ts).
 
 Read-only helpers (Rust, not on-chain ix):
 - `check_access(subscription, now) -> { active, expiry_ts }` (boolean only — never tier)
@@ -191,9 +208,18 @@ churn.
 
 ```
 cargo test -p sorts-community
-  5 unit (logic.rs)
-  6 integration (t1..t6, including t6 privacy: no Vec<Pubkey>, no Vec<Address>,
-                  no plaintext `level` field on Subscription)
+  6 unit (logic.rs — including subscriber_commitment determinism)
+  8 integration (t1..t8):
+    t1 initialize_community happy path
+    t2 5/95 fee split (Solidity parity)
+    t3/t4 check_access liveness boundary
+    t5 aggregate counter math
+    t6 privacy: no Vec<Pubkey>/Vec<Address>, no plaintext `level`,
+       and (v2) no plaintext `subscriber: Address` field on Subscription
+    t7 enumeration: byte 33-65 of every Subscription account is a
+       commitment, not a wallet pubkey
+    t8 subscriber_commitment determinism (re-derives same value for
+       same (subscriber, nonce) pair)
 ```
 
 ### 4.6 Quasar CLI cut-line

@@ -19,17 +19,17 @@ import { SolanaService } from '../services/chain/SolanaService';
 
 const PROGRAM_ID = 'AEp6VuJqfctTRQpZP3LDjKcua4C1jGP8YT721AMSBkFV';
 const ANY_PUBKEY = '11111111111111111111111111111112';
-const ANY_WALLET = '11111111111111111111111111111113';
+const ANY_COMMITMENT = new Uint8Array(32).fill(0x77);
 
 function freshSolana() {
   const svc = new SolanaService({ rpcUrl: 'https://invalid.local', programId: PROGRAM_ID });
-  // No real RPC. Mock the only network-touching method we exercise here.
-  jest.spyOn(svc, 'fetchSubscription').mockResolvedValue(null);
+  // No real RPC. Mock the only network-touching methods we exercise here.
+  jest.spyOn(svc, 'fetchSubscriptionByCommitment').mockResolvedValue(null);
   jest.spyOn(svc, 'fetchCommunity').mockResolvedValue(null);
   return svc;
 }
 
-describe('t1 — checkAccess response leaks no tier / commitment / salt', () => {
+describe('t1 — checkAccessByCommitment response leaks no tier / commitment / salt', () => {
   // Forbidden tokens covered (case-insensitive snake + camel):
   //   tier, tier_level, tierLevel, commitment, salt, salt_pubkey, saltPubkey.
   const FORBIDDEN = [
@@ -43,8 +43,8 @@ describe('t1 — checkAccess response leaks no tier / commitment / salt', () => 
 
   it('returns a boolean only, with no forbidden fields in the JSON', async () => {
     const svc = freshSolana();
-    const out1 = await svc.checkAccess(ANY_PUBKEY, ANY_WALLET, 1);
-    const out2 = await svc.checkAccess(ANY_PUBKEY, ANY_WALLET, 3);
+    const out1 = await svc.checkAccessByCommitment(ANY_PUBKEY, ANY_COMMITMENT);
+    const out2 = await svc.checkAccessByCommitment(ANY_PUBKEY, new Uint8Array(32).fill(0x88));
     const json = JSON.stringify({ result1: out1, result2: out2 });
     for (const re of FORBIDDEN) {
       expect(json).not.toMatch(re);
@@ -53,9 +53,9 @@ describe('t1 — checkAccess response leaks no tier / commitment / salt', () => 
     expect(typeof out2).toBe('boolean');
   });
 
-  it('getMembershipStatus also drops every forbidden token', async () => {
+  it('getMembershipStatusByCommitment also drops every forbidden token', async () => {
     const svc = freshSolana();
-    const status = await svc.getMembershipStatus(ANY_PUBKEY, ANY_WALLET);
+    const status = await svc.getMembershipStatusByCommitment(ANY_PUBKEY, ANY_COMMITMENT);
     const json = JSON.stringify(status);
     for (const re of FORBIDDEN) {
       // tierLevel as a *key* is allowed only as the explicit `null` projection
@@ -65,6 +65,13 @@ describe('t1 — checkAccess response leaks no tier / commitment / salt', () => 
     }
     // Sanity: the EVM-interface field `tierLevel` is present and is null.
     expect(status.tierLevel).toBeNull();
+  });
+
+  it('legacy wallet-based checkAccess throws on Solana (Tier 1.2 mitigation)', async () => {
+    const svc = freshSolana();
+    await expect(
+      svc.checkAccess(ANY_PUBKEY, '11111111111111111111111111111113', 1),
+    ).rejects.toThrow(/checkAccessByCommitment/);
   });
 });
 

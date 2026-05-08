@@ -24,9 +24,17 @@ import {
   buildInitializeCommunityIx,
   buildRenewSubscriptionIx,
   buildSubscribeIx,
+  buildZeroCloakSigs,
   hash32,
 } from '@/lib/solana/instructions';
-import { deriveCommunityPda, getSortsProgramId } from '@/lib/solana/program';
+import {
+  buildNonceCanonicalMessage,
+  deriveCommunityPda,
+  deriveSubscriberCommitment,
+  getSortsProgramId,
+  nonceFromSignature,
+  PROTOCOL_TREASURY,
+} from '@/lib/solana/program';
 
 /** Layout offsets — must match programs/sorts-community/src/state.rs.
  *  Discriminator(1) + creator(32) + name_hash(32) + symbol_hash(32) +
@@ -38,7 +46,7 @@ const COMMUNITY_REVENUE_OFFSET = COMMUNITY_ACTIVE_MEMBERS_OFFSET + 8;
 
 export function useSolanaChainAdapter(): ChainAdapter {
   const { connection } = useConnection();
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, signMessage, connected } = useWallet();
   const [transactionState, setTransactionState] = useState<ChainTransactionState>('idle');
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +70,27 @@ export function useSolanaChainAdapter(): ChainAdapter {
     if (!signTransaction) throw new Error('Connected wallet does not support signTransaction.');
     return { signer: publicKey, sign: signTransaction };
   }, [publicKey, signTransaction]);
+
+  /** Derive the per-(subscriber, community) nonce + commitment by asking the
+   *  wallet to sign a canonical message. ed25519 is deterministic per RFC
+   *  8032, so the same wallet over the same message reproduces the same
+   *  nonce on every visit — no backend table or browser localStorage. */
+  const deriveCommitmentForCommunity = useCallback(
+    async (signer: PublicKey, community: PublicKey): Promise<{ commitment: Uint8Array; nonce: Uint8Array }> => {
+      if (!signMessage) {
+        throw new Error(
+          'Connected wallet does not support signMessage. Use a wallet adapter ' +
+            '(Phantom, Solflare, etc.) that exposes message signing.',
+        );
+      }
+      const message = buildNonceCanonicalMessage(community);
+      const signature = await signMessage(message);
+      const nonce = await nonceFromSignature(new Uint8Array(signature));
+      const commitment = deriveSubscriberCommitment(signer, nonce);
+      return { commitment, nonce };
+    },
+    [signMessage],
+  );
 
   const createCommunity = useCallback(async (input: CreateCommunityInput): Promise<CreateCommunityResult> => {
     setError(null);
@@ -136,12 +165,52 @@ export function useSolanaChainAdapter(): ChainAdapter {
       // Salt is a fresh ephemeral keypair — pubkey is recorded on-chain, secret discarded.
       const salt = input.saltPubkey ? new PublicKey(input.saltPubkey) : Keypair.generate().publicKey;
 
+      // Step 1: derive subscriber pseudonym (commitment + nonce) by asking the
+      // wallet to sign a canonical message. The nonce never leaves the browser.
+      const { commitment, nonce } = await deriveCommitmentForCommunity(signer, community);
+
+      // Step 2: Tier 1.3 dual-path payment rail.
+      // - Default (devnet): all-zero `cloak_payment_sigs`. The on-chain
+      //   handler executes the transparent system_program::transfer flow.
+      // - When ENABLE_CLOAK_MAINNET=true (mainnet only): orchestrate a
+      //   Cloak deposit + 2× partialWithdraw to creator and treasury, then
+      //   record the resulting payout signatures in the slot. The handler
+      //   then SKIPS the transparent transfer (Cloak already moved funds).
+      let cloakPaymentSigs = buildZeroCloakSigs();
+      if (env.NEXT_PUBLIC_ENABLE_CLOAK_MAINNET) {
+        if (!signTransaction) {
+          throw new Error('Cloak path requires a wallet that supports signTransaction.');
+        }
+        // Lazy import keeps the snarkjs prover bundle out of pages that don't
+        // need it. The chunk is shared with the analytics-page payroll widget.
+        const { cloakSubscribePay } = await import('@/lib/solana/cloak');
+        const tierPriceLamports = input.tierPriceLamports ?? 0n;
+        if (tierPriceLamports <= 0n) {
+          throw new Error(
+            'Cloak path requires a positive tierPriceLamports on the SubscribeInput.',
+          );
+        }
+        const feeLamports = (tierPriceLamports * 500n) / 10_000n; // 5% protocol fee, matches PROTOCOL_FEE_BPS.
+        const cloakResult = await cloakSubscribePay({
+          connection,
+          wallet: { publicKey: signer, signTransaction },
+          creator,
+          treasury: PROTOCOL_TREASURY,
+          priceLamports: tierPriceLamports,
+          feeLamports,
+        });
+        cloakPaymentSigs = cloakResult.paymentSigs;
+      }
+
       const ix = buildSubscribeIx({
         subscriber: signer,
         community,
         creator,
         level: input.tier,
+        commitment,
+        nonce,
         saltPubkey: salt,
+        cloakPaymentSigs,
       });
       const tx = new Transaction().add(ix);
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
@@ -161,7 +230,7 @@ export function useSolanaChainAdapter(): ChainAdapter {
       setTransactionState('transaction-failed');
       throw caught;
     }
-  }, [connection, requireWallet]);
+  }, [connection, requireWallet, deriveCommitmentForCommunity]);
 
   const renew = useCallback(async (input: RenewInput): Promise<TransactionResult> => {
     setError(null);
@@ -171,11 +240,46 @@ export function useSolanaChainAdapter(): ChainAdapter {
       if (!input.tier) throw new Error('renew requires tier on Solana.');
       setTransactionState('awaiting-signature');
 
+      const community = new PublicKey(input.communityAddress);
+      const creator = new PublicKey(input.creatorAddress);
+      // Re-derive the same commitment + nonce that subscribe-time used. Because
+      // ed25519 signing is deterministic, the same wallet over the same message
+      // produces the same nonce → same commitment → same Subscription PDA.
+      const { commitment, nonce } = await deriveCommitmentForCommunity(signer, community);
+
+      // Dual-path payment rail (mirrors subscribe). Each renewal records its
+      // own cloak_payment_sigs — a transparent renewal of a Cloak subscribe
+      // is allowed (sigs flip back to zero) and vice versa.
+      let cloakPaymentSigs = buildZeroCloakSigs();
+      if (env.NEXT_PUBLIC_ENABLE_CLOAK_MAINNET) {
+        if (!signTransaction) {
+          throw new Error('Cloak path requires a wallet that supports signTransaction.');
+        }
+        const { cloakSubscribePay } = await import('@/lib/solana/cloak');
+        const tierPriceLamports = input.tierPriceLamports ?? 0n;
+        if (tierPriceLamports <= 0n) {
+          throw new Error('Cloak renew requires a positive tierPriceLamports on the RenewInput.');
+        }
+        const feeLamports = (tierPriceLamports * 500n) / 10_000n;
+        const cloakResult = await cloakSubscribePay({
+          connection,
+          wallet: { publicKey: signer, signTransaction },
+          creator,
+          treasury: PROTOCOL_TREASURY,
+          priceLamports: tierPriceLamports,
+          feeLamports,
+        });
+        cloakPaymentSigs = cloakResult.paymentSigs;
+      }
+
       const ix = buildRenewSubscriptionIx({
         subscriber: signer,
-        community: new PublicKey(input.communityAddress),
-        creator: new PublicKey(input.creatorAddress),
+        community,
+        creator,
         level: input.tier,
+        commitment,
+        nonce,
+        cloakPaymentSigs,
       });
       const tx = new Transaction().add(ix);
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
@@ -195,7 +299,7 @@ export function useSolanaChainAdapter(): ChainAdapter {
       setTransactionState('transaction-failed');
       throw caught;
     }
-  }, [connection, requireWallet]);
+  }, [connection, requireWallet, deriveCommitmentForCommunity]);
 
   const getAggregateStats = useCallback(async (communityRef: string): Promise<AggregateStats> => {
     let pubkey: PublicKey;

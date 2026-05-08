@@ -900,3 +900,27 @@ button { font-family: inherit; cursor: pointer; }
   .mobile-bottom-nav { display: flex; }
   .studio-content { padding-left: 0; padding-bottom: var(--mobile-nav-h); }
 }
+
+/* Day-10 D5 — skip-link for keyboard + screen-reader users.
+   Hidden off-screen until focused; shows a high-contrast pill at the
+   top-left when keyboard focus lands on it. */
+.skip-link {
+  position: absolute;
+  top: -64px;
+  left: 8px;
+  z-index: 9999;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--cyan, #2DE8E0);
+  color: #05070A;
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 13px;
+  transition: top 0.15s ease;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 8px;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}

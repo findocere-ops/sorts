@@ -9,6 +9,8 @@ import { useChain } from '@/lib/chain/useChain';
 import { useUmbraPrivacy } from '@/hooks/useUmbraPrivacy';
 import { useSolanaMembership } from '@/hooks/useSolanaMembership';
 import { UmbraMembershipCard } from '@/components/privacy/UmbraMembershipCard';
+import { TipButton } from '@/components/tip/TipButton';
+import { SkeletonCard, SkeletonFeedList } from '@/components/ui/Skeleton';
 
 interface FeedPost {
   id: string;
@@ -73,14 +75,28 @@ function FeedInner({ cid }: { cid: string }) {
     return <Shell><p className="t-sm" style={{ color: 'var(--danger)' }}>{error}</p></Shell>;
   }
   if (!community) {
-    return <Shell><p className="t-sm" style={{ color: 'var(--text-2)' }}>Loading…</p></Shell>;
+    // Day-10 B3 — skeleton instead of bare "Loading…".
+    return (
+      <Shell>
+        <SkeletonCard rows={2} />
+        <SkeletonFeedList count={3} />
+      </Shell>
+    );
   }
 
   return (
     <Shell>
       <header style={{ display: 'grid', gap: 6 }}>
         <p className="t-label" style={{ color: 'var(--cyan)' }}>Feed</p>
-        <h1 className="t-h1">{community.name}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <h1 className="t-h1" style={{ flex: 1, minWidth: 0 }}>{community.name}</h1>
+          {community.creator_wallet && (
+            <TipButton
+              recipient={community.creator_wallet}
+              label={community.name}
+            />
+          )}
+        </div>
       </header>
 
       <UmbraMembershipCard

@@ -10,9 +10,15 @@
 
 import { UmbraPrivacyService } from '../services/chain/UmbraPrivacyService';
 import { SolanaService } from '../services/chain/SolanaService';
+import type { SubscriberRef } from '@sorts/shared';
 
 const ANY_PUBKEY = '11111111111111111111111111111112';
 const ANY_WALLET = '11111111111111111111111111111113';
+// 32-byte commitment encoded as base64 — fixed bytes, no derivation needed
+// for the no-leak assertions (the byte content is irrelevant to log scanning).
+const ANY_COMMITMENT_B64 = Buffer.alloc(32, 0x77).toString('base64');
+const COMMITMENT_REF: SubscriberRef = { kind: 'commitment', commitmentBase64: ANY_COMMITMENT_B64 };
+const WALLET_REF: SubscriberRef = { kind: 'wallet', wallet: ANY_WALLET };
 
 const FORBIDDEN_TOKENS: RegExp[] = [
   /\bseed\s*[:=]\s*['"][^'"]+['"]/i,
@@ -63,8 +69,8 @@ describe('UmbraPrivacyService — no-seed-leak', () => {
 
   beforeEach(() => {
     chain = new SolanaService({ rpcUrl: 'https://invalid.local', programId: 'AEp6VuJqfctTRQpZP3LDjKcua4C1jGP8YT721AMSBkFV' });
-    jest.spyOn(chain, 'checkAccess').mockResolvedValue(false);
-    jest.spyOn(chain, 'getMembershipStatus').mockResolvedValue({
+    jest.spyOn(chain, 'checkAccessByCommitment').mockResolvedValue(false);
+    jest.spyOn(chain, 'getMembershipStatusByCommitment').mockResolvedValue({
       hasAccess: false,
       isExpired: false,
       tierLevel: null,
@@ -75,7 +81,7 @@ describe('UmbraPrivacyService — no-seed-leak', () => {
   });
 
   it('evaluateEntitlement returns {active, privacyMode, expiresAt?} only — no tier / commitment / salt', async () => {
-    const result = await svc.evaluateEntitlement(ANY_PUBKEY, ANY_WALLET);
+    const result = await svc.evaluateEntitlement(ANY_PUBKEY, COMMITMENT_REF);
     // The privacy mode literal contains the word "commitment" by design
     // (e.g. `on-chain-commitment-fallback`), so strip that key before scanning.
     const scrubbed = JSON.stringify({ ...result, privacyMode: undefined });
@@ -92,15 +98,15 @@ describe('UmbraPrivacyService — no-seed-leak', () => {
   });
 
   it('privacy mode is "on-chain-commitment-fallback" by default', async () => {
-    const result = await svc.evaluateEntitlement(ANY_PUBKEY, ANY_WALLET);
+    const result = await svc.evaluateEntitlement(ANY_PUBKEY, COMMITMENT_REF);
     expect(result.privacyMode).toBe('on-chain-commitment-fallback');
   });
 
   it('produces no log lines containing seed/key/signature/ciphertext tokens', async () => {
     const cap = captureConsole();
     try {
-      await svc.evaluateEntitlement(ANY_PUBKEY, ANY_WALLET);
-      await svc.getRegistrationStatus(ANY_WALLET);
+      await svc.evaluateEntitlement(ANY_PUBKEY, COMMITMENT_REF);
+      await svc.getRegistrationStatus(COMMITMENT_REF);
     } finally {
       cap.restore();
     }
@@ -112,10 +118,33 @@ describe('UmbraPrivacyService — no-seed-leak', () => {
   });
 
   it('getRegistrationStatus is implicit-registered in fallback mode and exposes no token-shaped fields', async () => {
-    const status = await svc.getRegistrationStatus(ANY_WALLET);
+    const status = await svc.getRegistrationStatus(COMMITMENT_REF);
     expect(status.registered).toBe(true);
     expect(status.privacyMode).toBe('on-chain-commitment-fallback');
     expect(Object.keys(status).sort()).toEqual(['privacyMode', 'registered']);
+  });
+
+  it('rejects wallet-based evaluateEntitlement on Solana with a clear redirect (Tier 1.2 mitigation)', async () => {
+    await expect(svc.evaluateEntitlement(ANY_PUBKEY, WALLET_REF)).rejects.toThrow(
+      /not supported on Solana v2/,
+    );
+  });
+
+  it('rejects malformed base64 commitment with a 400-class error message', async () => {
+    const bad: SubscriberRef = { kind: 'commitment', commitmentBase64: 'not!base64!!' };
+    await expect(svc.evaluateEntitlement(ANY_PUBKEY, bad)).rejects.toThrow(
+      /must decode to exactly 32 bytes|not valid base64/,
+    );
+  });
+
+  it('rejects wrong-length commitment payload', async () => {
+    const tooShort: SubscriberRef = {
+      kind: 'commitment',
+      commitmentBase64: Buffer.alloc(31, 0x11).toString('base64'),
+    };
+    await expect(svc.evaluateEntitlement(ANY_PUBKEY, tooShort)).rejects.toThrow(
+      /must decode to exactly 32 bytes/,
+    );
   });
 
   it('retains the "Umbra" symbol so the future v2 swap is a one-line implementation change', () => {
