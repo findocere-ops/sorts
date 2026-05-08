@@ -10,6 +10,7 @@ import { useUmbraPrivacy } from '@/hooks/useUmbraPrivacy';
 import { useSolanaMembership } from '@/hooks/useSolanaMembership';
 import { UmbraMembershipCard } from '@/components/privacy/UmbraMembershipCard';
 import { Button } from '@/components/ui/Button';
+import { TipButton } from '@/components/tip/TipButton';
 
 export default function JoinCommunityPage({ params }: { params: { cid: string } }) {
   return (
@@ -75,15 +76,23 @@ function JoinInner({ cid }: { cid: string }) {
           Posts marked preview-eligible by the creator are visible without an active subscription.
           Locked posts show metadata only — bodies unlock after subscribing.
         </p>
-        {isActive ? (
-          <Link href={`/app/${cid}/feed`}>
-            <Button variant="primary">Open feed</Button>
-          </Link>
-        ) : (
-          <Link href={`/join/${cid}/subscribe`}>
-            <Button variant="primary">Subscribe</Button>
-          </Link>
-        )}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {isActive ? (
+            <Link href={`/app/${cid}/feed`}>
+              <Button variant="primary">Open feed</Button>
+            </Link>
+          ) : (
+            <Link href={`/join/${cid}/subscribe`}>
+              <Button variant="primary">Subscribe</Button>
+            </Link>
+          )}
+          {community.creator_wallet && (
+            <TipButton
+              recipient={community.creator_wallet}
+              label={community.name}
+            />
+          )}
+        </div>
       </section>
     </Shell>
   );

@@ -137,22 +137,45 @@ needs careful threat modeling we cannot squeeze into the timebox.
 
 ---
 
-## R5 — Tip flow + QR-code payment deferred to v2
+## R5 — Tip flow + QR-code payment ✅ shipped 2026-05-08 (transparent payment, dual-path Cloak switch)
 
-**Status:** original user request was Cloak integration spanning
-"subscribe, tipping, QR code, payroll." Submission scope was cut to
-**subscribe + payroll only** to fit the timebox. Tipping (subscriber
-pays creator outside a subscription) and QR-code payment (Solana Pay
-URI with Cloak metadata) are deferred.
+**Update 2026-05-08:** R5 closed for the devnet build. Both surfaces
+shipped. Updated status:
 
-**Why these were cut:** each requires its own UX surface
-(`<TipButton />`, QR scanner integration with Phantom mobile) plus
-integration tests. Combined cost was ~6 hours that the timebox could
-not absorb without breaking the submission cadence.
+| Surface | Component | Devnet behavior | Mainnet behavior (flag on) |
+|---|---|---|---|
+| Tip subscriber → creator | `frontend/src/components/tip/TipButton.tsx` | Single `system_program::transfer` ix + optional 80-char Memo Program ix | Cloak deposit + partialWithdraw via the same `cloakSubscribePay` orchestration as subscribe (with `feeLamports=0`) |
+| Solana Pay QR | `frontend/src/components/tip/CreatorTipQrCard.tsx` (creator-side QR generator) + `/tip/[recipient]` route (desktop fallback for the subscriber side) | `solana:` URI standard; Phantom mobile parses natively | Same URI; routes through the same TipButton → Cloak path |
+| Privacy-mode badge | `frontend/src/components/badges/PrivacyModeBadge.tsx` | `Payment: transparent · devnet` | `Payment: shielded via Cloak · mainnet` |
 
-**v2 commitment:** post-submission sprint (1–2 weeks). Both features
-sit on top of the now-shipped Cloak orchestration helpers; estimated
-cost is 4–6 hours per feature with the foundation already laid.
+**Privacy posture:** the badge is the single source of truth and is
+rendered prominently on every payment surface (subscribe page, tip
+modal, payroll widget, `/tip/[recipient]` route, settings QR card).
+The label NEVER overstates what the active rail delivers. Backend test
+`backend/src/__tests__/privacy-mode-static.test.ts` enforces this at CI
+time by reading `lib/solana/privacy-mode.ts` source verbatim and
+asserting the `transparent-devnet` descriptor's label cannot drift to
+include `shielded` / `encrypted` / `private`.
+
+**Original v2 commitment honored:** the Cloak orchestration helpers
+landed in the v3 PR (PG-017 / Tier 1.3) provided the foundation; the
+~6h scope estimated in the prior R5 entry materialized in a single
+commit on 2026-05-08.
+
+**What is still NOT shipped** (separate from R5):
+
+- A peer-to-peer privacy SDK on Solana devnet — none exists today
+  (Cloak mainnet-only, Vanish trading-only, Umbra fallback active,
+  IKA programmable-only). Tip + QR therefore use TRANSPARENT payment
+  on devnet by design. The dual-path code lights up shielded behavior
+  on mainnet flag flip — same as subscribe.
+- A backend cron verifier (R2) — still required before flipping the
+  mainnet flag. Without it, both subscribe AND tip would accept bogus
+  Cloak signatures on mainnet.
+
+**No regression in honesty contract:** zero false claims. Tip modal
+prominently shows the active payment-rail label so subscribers see
+what they are getting before they confirm.
 
 ---
 

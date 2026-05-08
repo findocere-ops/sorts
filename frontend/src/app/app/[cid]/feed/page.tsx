@@ -9,6 +9,7 @@ import { useChain } from '@/lib/chain/useChain';
 import { useUmbraPrivacy } from '@/hooks/useUmbraPrivacy';
 import { useSolanaMembership } from '@/hooks/useSolanaMembership';
 import { UmbraMembershipCard } from '@/components/privacy/UmbraMembershipCard';
+import { TipButton } from '@/components/tip/TipButton';
 
 interface FeedPost {
   id: string;
@@ -80,7 +81,15 @@ function FeedInner({ cid }: { cid: string }) {
     <Shell>
       <header style={{ display: 'grid', gap: 6 }}>
         <p className="t-label" style={{ color: 'var(--cyan)' }}>Feed</p>
-        <h1 className="t-h1">{community.name}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <h1 className="t-h1" style={{ flex: 1, minWidth: 0 }}>{community.name}</h1>
+          {community.creator_wallet && (
+            <TipButton
+              recipient={community.creator_wallet}
+              label={community.name}
+            />
+          )}
+        </div>
       </header>
 
       <UmbraMembershipCard

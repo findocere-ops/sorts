@@ -10,6 +10,7 @@ import { SolanaWalletButton } from '@/components/wallet/SolanaWalletButton';
 import { UmbraMembershipCard } from '@/components/privacy/UmbraMembershipCard';
 import { useUmbraPrivacy } from '@/hooks/useUmbraPrivacy';
 import { Button } from '@/components/ui/Button';
+import { PrivacyModeBadge } from '@/components/badges/PrivacyModeBadge';
 
 export default function SubscribePage({ params }: { params: { cid: string } }) {
   return (
@@ -85,6 +86,8 @@ function SubscribeInner({ cid }: { cid: string }) {
         active={false}
         previewMode={false}
       />
+
+      <PrivacyModeBadge variant="full" />
 
       <section className="card-elevated" style={{ display: 'grid', gap: 12, padding: 18 }}>
         {!subscriber ? (

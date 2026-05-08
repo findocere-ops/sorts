@@ -26,6 +26,7 @@ import { useCallback, useState } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { env } from '@/lib/env';
+import { PrivacyModeBadge } from '@/components/badges/PrivacyModeBadge';
 
 interface CreatorPayrollWithdrawProps {
   /** Creator wallet address (base58). The SDK withdraws to this address. */
@@ -141,25 +142,12 @@ export function CreatorPayrollWithdraw({ recipient }: CreatorPayrollWithdrawProp
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 10,
+          gap: 10,
+          flexWrap: 'wrap',
         }}
       >
         <div style={{ fontWeight: 600 }}>Cloak payroll · withdraw to wallet</div>
-        <span
-          style={{
-            display: 'inline-flex',
-            padding: '2px 10px',
-            borderRadius: 999,
-            border: '1px solid var(--border-cyan)',
-            background: 'var(--cyan-dim)',
-            color: 'var(--cyan)',
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-          }}
-        >
-          Mainnet · pre-alpha
-        </span>
+        <PrivacyModeBadge />
       </div>
       <p style={{ color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.55, fontSize: 12.5 }}>
         Pulls all shielded balance from your creator UTXO set into the wallet at{' '}
