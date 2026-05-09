@@ -1,11 +1,22 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import { CommunityService, CreateCommunitySchema } from '../../services/community';
 import { creatorActionMessage, verifyCreatorProof } from '../walletProof';
+import { privyAuth, requireWalletOwner } from '../middleware/auth';
+import { sigNonce } from '../middleware/sig-nonce';
+import type { PrivyService } from '../../services/wallet/PrivyService';
 
-export function communityRouter(db: Database): Router {
+interface RouterDeps {
+  privyService: PrivyService | null;
+}
+
+export function communityRouter(db: Database, deps: RouterDeps = { privyService: null }): Router {
   const router = Router();
   const svc = new CommunityService(db);
+
+  const auth = deps.privyService ? privyAuth(deps.privyService) : passThrough;
+  const ownsCreatorWallet = deps.privyService ? requireWalletOwner('creatorWallet') : passThrough;
+  const replayGuard = sigNonce(db);
 
   // GET /api/communities[?category=alpha]
   router.get('/', (req: Request, res: Response) => {
@@ -39,8 +50,10 @@ export function communityRouter(db: Database): Router {
     }
   });
 
-  // POST /api/communities — called by frontend after successful on-chain deployment
-  router.post('/', async (req: Request, res: Response) => {
+  // POST /api/communities — called by frontend after successful on-chain deployment.
+  //   Auth chain: rate-limit (global) → Privy bearer token → wallet owner check
+  //               → replay nonce → wallet signature proof → service.create.
+  router.post('/', auth, ownsCreatorWallet, replayGuard, async (req: Request, res: Response) => {
     const parsed = CreateCommunitySchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -63,4 +76,8 @@ export function communityRouter(db: Database): Router {
   });
 
   return router;
+}
+
+function passThrough(_req: Request, _res: Response, next: NextFunction): void {
+  next();
 }

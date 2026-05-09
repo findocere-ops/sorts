@@ -1,0 +1,19 @@
+[project]
+name = "sorts-community"
+
+[toolchain]
+type = "solana"
+
+[testing]
+language = "rust"
+
+[testing.rust]
+framework = "cargo"
+test = { program = "cargo", args = ["test"] }
+
+[clients]
+path = "target/client"
+languages = ["rust"]
+
+[lint]
+enabled = false

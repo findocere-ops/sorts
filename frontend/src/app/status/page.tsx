@@ -8,7 +8,7 @@ import { formatUsdc } from '@/lib/chain/usdc';
 import {
   ARBITRUM_SEPOLIA_CHAIN_ID,
   shortenAddress,
-  useChain,
+  useLegacyArbitrumChain,
 } from '@/lib/chain/useChain';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -16,13 +16,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 type HealthState = 'not-configured' | 'checking' | 'ok' | 'unavailable';
 
 export default function StatusPage() {
+  // /status is the legacy Arbitrum diagnostics page — use the legacy hook directly.
   const {
     address,
     chainId,
     factoryAddress,
     factoryConfigured,
     readUsdcBalance,
-  } = useChain();
+  } = useLegacyArbitrumChain();
   const [healthState, setHealthState] = useState<HealthState>(API_URL ? 'checking' : 'not-configured');
   const [usdcBalance, setUsdcBalance] = useState<string>('not connected');
 

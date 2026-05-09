@@ -78,6 +78,27 @@ The demo should prove one clean path:
 9. Creator sees aggregate stats, not a member wallet list.
 10. IKA dWallet capability appears with pre-alpha warnings.
 
+## Current Demo Status
+
+Honest snapshot of what's actually wired in this build (devnet only).
+
+| Feature | Status | Notes |
+|---|---|---|
+| Solana devnet community creation | ✅ Live | Quasar program on devnet — `AEp6VuJqfctTRQpZP3LDjKcua4C1jGP8YT721AMSBkFV` (v3 layout) |
+| Subscriber Solana subscribe + access check | ✅ Live | Devnet only; transparent payment path. Cloak path activates on mainnet (see below). |
+| Aggregate-only creator analytics | ✅ Live | No member lists, ever |
+| Privy auth | ✅ Live | Email + Solana wallet (wallet-adapter for Solana, Privy for identity) |
+| Umbra hidden membership state | 🧪 Experimental / Fallback | Cut-line tripped on Day 4 — see `UmbraMembershipCard` "Umbra v2 in progress" label |
+| IKA dWallet | 🧪 Pre-alpha | Static capability card; real-funds method gated + throws |
+| **Cloak private payment rail** (Tier 1.3) | 🧪 **Coded, mainnet-only** | `@cloak.dev/sdk@0.1.6` (audit status not stated by Cloak as of 2026-05-07). Subscriber → creator + treasury payments route through Cloak when `NEXT_PUBLIC_ENABLE_CLOAK_MAINNET=true`. Cloak's program is mainnet-only, so the devnet build records all-zero `cloak_payment_sigs` and uses transparent `system_program::transfer`. Subscription account stores the recorded sigs for off-chain verification (planned v2 cron — see [`docs/SUBMISSION_RISKS.md`](docs/SUBMISSION_RISKS.md)). |
+| **Creator payroll withdraw** | 🧪 Coded, mainnet-only | `CreatorPayrollWithdraw` widget on `/studio/[cid]/analytics`. Same flag gates the live behavior; on devnet the widget renders the labeled "mainnet only" placeholder. |
+| **Tip button + Solana Pay QR** (Tier 1.3 surface) | ✅ Live (transparent on devnet) / 🧪 Cloak-shielded on mainnet | `TipButton` mounted on every community page; `CreatorTipQrCard` on `/studio/[cid]/settings`; `/tip/[recipient]` route is the desktop fallback for `solana:` URIs. Devnet uses `system_program::transfer` + optional Memo Program ix. Mainnet flag flip routes through the same Cloak orchestration as subscribe. Privacy-mode badge (`PrivacyModeBadge`) renders the active rail label on every payment surface — single source of truth. |
+| **Privacy-mode badge** | ✅ Live | Source: `frontend/src/lib/solana/privacy-mode.ts`. Rendered on subscribe, tip, payroll, settings QR, and `/tip/[recipient]`. Label never overstates the active rail; CI guard at `backend/src/__tests__/privacy-mode-static.test.ts`. |
+| Telegram delivery | ✅ Live | Bot token gates feature; `/status` reply never includes tier |
+| Mainnet | ❌ Not in scope for submission | Devnet MVP only — Universal Hard Rule. Cloak code path is dormant on devnet by design. |
+
+A site-wide `DisclaimerFooter` (mounted in `frontend/src/app/layout.tsx`) carries the longer-form devnet / no-real-funds / no-production-FHE-or-MPC disclosures on every page.
+
 ## Quick Start
 
 Prerequisites:

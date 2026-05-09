@@ -4,17 +4,27 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "test": "tsc --noEmit",
-    "start": "node dist/index.js"
+    "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand",
+    "start": "node dist/index.js",
+    "migrate": "ts-node --transpile-only -P tsconfig.json scripts/migrate-to-postgres.ts",
+    "seed:devnet-demo": "ts-node --transpile-only -P tsconfig.json scripts/seed-devnet-demo.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
     "@iexec/dataprotector": "2.0.0-beta.26",
+    "@privy-io/server-auth": "^1.32.5",
+    "@solana/web3.js": "^1.98.4",
     "@sorts/shared": "workspace:*",
+    "@umbra-privacy/sdk": "^4.0.0",
     "better-sqlite3": "^11.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.4.1",
     "grammy": "^1.26.0",
+    "pg": "^8.20.0",
+    "pg-format": "^1.0.4",
     "uuid": "^9.0.1",
     "viem": "^2.12.0",
     "zod": "^3.23.6"
@@ -23,8 +33,15 @@
     "@types/better-sqlite3": "^7.6.10",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.19.39",
+    "@types/pg": "^8.20.0",
+    "@types/supertest": "^7.2.0",
     "@types/uuid": "^9.0.8",
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5"
   }

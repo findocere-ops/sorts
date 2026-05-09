@@ -22,3 +22,17 @@ secrets/
 *.p12
 *.pfx
 *.secret
+
+# Solana / Quasar program artifacts
+programs/*/target/
+programs/*/keys/*.json
+programs/**/Cargo.lock
+.anchor/
+*.idl
+public/demo-screenshots/*.png
+
+# Deploy preflight env files — local-only, paste of values you'll then enter
+# into Render / Vercel dashboard. Never committed.
+*.env.deploy
+backend/.env.deploy
+frontend/.env.deploy

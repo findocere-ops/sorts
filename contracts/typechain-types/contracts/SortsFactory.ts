@@ -34,10 +34,12 @@ export interface SortsFactoryInterface extends Interface {
       | "getCommunityCount"
       | "getCreatorCommunities"
       | "owner"
+      | "paymentToken"
       | "renounceOwnership"
       | "totalProtocolRevenue"
       | "transferOwnership"
       | "withdrawRevenue"
+      | "withdrawTokens"
   ): FunctionFragment;
 
   getEvent(
@@ -74,6 +76,10 @@ export interface SortsFactoryInterface extends Interface {
   ): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
   encodeFunctionData(
+    functionFragment: "paymentToken",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
     functionFragment: "renounceOwnership",
     values?: undefined
   ): string;
@@ -87,6 +93,10 @@ export interface SortsFactoryInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "withdrawRevenue",
+    values: [AddressLike, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "withdrawTokens",
     values: [AddressLike, BigNumberish]
   ): string;
 
@@ -120,6 +130,10 @@ export interface SortsFactoryInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
   decodeFunctionResult(
+    functionFragment: "paymentToken",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "renounceOwnership",
     data: BytesLike
   ): Result;
@@ -133,6 +147,10 @@ export interface SortsFactoryInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "withdrawRevenue",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "withdrawTokens",
     data: BytesLike
   ): Result;
 }
@@ -259,6 +277,8 @@ export interface SortsFactory extends BaseContract {
 
   owner: TypedContractMethod<[], [string], "view">;
 
+  paymentToken: TypedContractMethod<[], [string], "view">;
+
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
 
   totalProtocolRevenue: TypedContractMethod<[], [bigint], "view">;
@@ -270,6 +290,12 @@ export interface SortsFactory extends BaseContract {
   >;
 
   withdrawRevenue: TypedContractMethod<
+    [to: AddressLike, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
+  withdrawTokens: TypedContractMethod<
     [to: AddressLike, amount: BigNumberish],
     [void],
     "nonpayable"
@@ -318,6 +344,9 @@ export interface SortsFactory extends BaseContract {
     nameOrSignature: "owner"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
+    nameOrSignature: "paymentToken"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
   getFunction(
@@ -328,6 +357,13 @@ export interface SortsFactory extends BaseContract {
   ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "withdrawRevenue"
+  ): TypedContractMethod<
+    [to: AddressLike, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "withdrawTokens"
   ): TypedContractMethod<
     [to: AddressLike, amount: BigNumberish],
     [void],

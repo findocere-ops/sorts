@@ -50,7 +50,10 @@
       "Bash(pnpm build *)",
       "Bash(curl -sI http://localhost:3000/)",
       "Bash(curl -sI http://localhost:3000/assets/sorts-logo-mark-trans.png)",
-      "Bash(curl -sI http://localhost:3000/assets/sorts-app-icon.png)"
+      "Bash(curl -sI http://localhost:3000/assets/sorts-app-icon.png)",
+      "WebFetch(domain:docs.cloak.ag)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.vanish.trade)"
     ]
   }
 }

@@ -1,0 +1,79 @@
+# SORTS — Render web service config (Infrastructure as Code).
+#
+# Usage:
+#   1. Push this file to the branch you want Render to deploy.
+#   2. In Render dashboard: New + → Blueprint → connect this repo.
+#      Render reads `render.yaml` and auto-creates the service below.
+#   3. Fill the env vars marked `sync: false` from the Render UI
+#      (these never get committed; the file just declares their NAMES).
+#   4. After first deploy, run the migrate hook (one-time):
+#        Shell tab → `pnpm --filter @sorts/backend migrate`
+#      Then optionally seed the demo data:
+#        Shell tab → `pnpm --filter @sorts/backend seed:devnet-demo`
+#
+# This file is the single source of truth for the Render service shape.
+# Do NOT edit env vars in the dashboard — change here, redeploy.
+
+services:
+  - type: web
+    name: sorts-backend
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: .
+    buildCommand: |
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @sorts/shared build &&
+      pnpm --filter @sorts/backend build
+    startCommand: node backend/dist/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    # Pre-deploy migration runs on every push. Idempotent (CREATE TABLE IF
+    # NOT EXISTS), safe to repeat. Comment out after first successful run if
+    # you want to manage migrations manually.
+    preDeployCommand: pnpm --filter @sorts/backend migrate
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000  # Render's default web-service port
+      # Database — paste the Supabase pooled DSN once at provision time.
+      # Format: postgres://postgres.xxxx:<password>@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+      - key: DATABASE_URL
+        sync: false
+      # Frontend URL — set this AFTER Vercel is up. Restart Render after
+      # editing so CORS picks up the new origin.
+      - key: FRONTEND_URL
+        sync: false
+      # Solana — devnet defaults work; override RPC if rate-limited.
+      - key: SOLANA_DEVNET_RPC_URL
+        value: https://api.devnet.solana.com
+      - key: SOLANA_PROGRAM_ID
+        value: AEp6VuJqfctTRQpZP3LDjKcua4C1jGP8YT721AMSBkFV
+      # Privy server-side identity verification.
+      - key: PRIVY_APP_ID
+        sync: false
+      - key: PRIVY_APP_SECRET
+        sync: false
+      # Telegram bot — optional. Leave empty if not testing the bot path.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      # Feature flags. All conservative defaults; do NOT enable real-funds
+      # paths on the demo deploy.
+      - key: ENABLE_SOLANA_PHASE2
+        value: "true"
+      - key: ENABLE_UMBRA_ENCRYPTED_BALANCES
+        value: "false"
+      - key: ENABLE_UMBRA_MIXER
+        value: "false"
+      - key: ENABLE_IKA_DWALLET
+        value: "false"
+      - key: ENABLE_IKA_REAL_FUNDS
+        value: "false"
+      - key: ENABLE_REAL_FHE
+        value: "false"
+      - key: ENABLE_REAL_MPC_SIGNING
+        value: "false"
+      - key: ENABLE_CLOAK_MAINNET
+        value: "false"

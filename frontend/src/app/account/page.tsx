@@ -2,6 +2,10 @@
 import { AppShell } from '@/components/layout/AppShell';
 import { useSortsPrivy, useSortsWallets } from '@/components/providers/PrivyProvider';
 import { Button } from '@/components/ui/Button';
+import { SignerCapabilitiesCard } from '@/components/wallet/SignerCapabilitiesCard';
+import { MultichainAssetPanel } from '@/components/wallet/MultichainAssetPanel';
+import { MessageApprovalLifecycle } from '@/components/wallet/MessageApprovalLifecycle';
+import { DemoStatusCard } from '@/components/states/DemoStatusCard';
 
 export default function AccountPage() {
   const { ready, authenticated, login, logout, user, linkEmail, linkWallet } = useSortsPrivy();
@@ -94,6 +98,24 @@ export default function AccountPage() {
           <Row label="Status">
             <span style={{ fontSize: 13, color: 'var(--text-3)' }}>Not linked — use the /start command in the Sorts bot to link</span>
           </Row>
+        </Section>
+
+        {/* Day-10 A3 — DemoStatusCard pairs the IKA pre-alpha disclosure
+            with the calibrated "what works today" panel so a signed-in
+            visitor doesn't read the IKA section as "the demo is broken". */}
+        <Section title="Build status">
+          <div style={{ padding: 12 }}>
+            <DemoStatusCard compact />
+          </div>
+        </Section>
+
+        {/* IKA dWallet (pre-alpha) */}
+        <Section title="IKA dWallet">
+          <div style={{ padding: 12, display: 'grid', gap: 12 }}>
+            <SignerCapabilitiesCard />
+            <MultichainAssetPanel />
+            <MessageApprovalLifecycle current="prepared" />
+          </div>
         </Section>
 
         {/* Privacy */}

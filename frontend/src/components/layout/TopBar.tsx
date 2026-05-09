@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { WalletButton } from '@/components/auth/WalletButton';
+import { DevnetBadge } from '@/components/badges';
 
 export function TopBar({ title, right }: { title?: string; right?: React.ReactNode }) {
   return (
@@ -21,6 +22,7 @@ export function TopBar({ title, right }: { title?: string; right?: React.ReactNo
       }}
     >
       <Link href="/" className="wordmark" style={{ fontSize: 13 }}>SORTS</Link>
+      <DevnetBadge />
       {title && <span style={{ color: 'var(--text-2)', fontSize: 13 }}>{title}</span>}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
         {right}
