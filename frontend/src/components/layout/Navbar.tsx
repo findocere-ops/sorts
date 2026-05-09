@@ -76,12 +76,15 @@ export function MarketingNav() {
         <SortsLogoFull markSize={38} wordmarkSize={16} showTagline={false} />
       </Link>
 
-      {/* Center: Nav links */}
+      {/* Center: Nav links — Day-10 C8: link to real routes only.
+          "Discover" → /discover (real route).
+          "Privacy"  → landing#privacy anchor.
+          "FAQ"      → landing#faq anchor.
+          Drop "Pricing" + "Features" + "Docs" placeholders that 404'd. */}
       <nav className="lp-nav-links">
-        <a href="#features" className="lp-nav-link">Features</a>
+        <Link href="/discover" className="lp-nav-link">Discover</Link>
         <a href="#privacy" className="lp-nav-link">Privacy</a>
-        <a href="#pricing" className="lp-nav-link">Pricing</a>
-        <Link href="/role" className="lp-nav-link">Demo</Link>
+        <a href="#faq" className="lp-nav-link">FAQ</a>
       </nav>
 
       {/* Right: Auth */}

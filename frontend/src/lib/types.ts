@@ -1,4 +1,4 @@
-export type ChainId = 'arbitrum-sepolia';
+export type ChainId = 'arbitrum-sepolia' | 'solana-devnet' | 'solana-mainnet';
 
 export interface Tier {
   id?: string;

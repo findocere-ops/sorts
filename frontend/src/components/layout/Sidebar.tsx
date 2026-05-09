@@ -4,9 +4,9 @@ import { usePathname } from 'next/navigation';
 import { useSortsAccount, useSortsPrivy } from '@/components/providers/PrivyProvider';
 
 const NAV_ITEMS = [
-  { href: '/discover',   label: 'Discover',   icon: CompassIcon },
-  { href: '/dashboard',  label: 'Dashboard',  icon: GridIcon },
-  { href: '/create',     label: 'Create',     icon: PlusIcon },
+  { href: '/role',           label: 'Discover',   icon: CompassIcon },
+  { href: '/studio',         label: 'Studio',     icon: GridIcon },
+  { href: '/studio/create',  label: 'Create',     icon: PlusIcon },
 ];
 
 export function Sidebar() {
@@ -71,7 +71,7 @@ export function Sidebar() {
         <div style={{ height: 1, background: 'var(--border-dim)', margin: '5px 7px' }} />
 
         <Link
-          href="/discover"
+          href="/role"
           style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '7px 9px', borderRadius: 'var(--r-md)',
@@ -99,7 +99,7 @@ export function Sidebar() {
           <div style={{
             width: 28, height: 28, borderRadius: '50%',
             background: 'var(--accent-dim)',
-            border: '1px solid rgba(91,142,245,0.2)',
+            border: '1px solid var(--border-cyan)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 11, fontWeight: 700, color: 'var(--accent)', flexShrink: 0,
           }}>
@@ -110,7 +110,7 @@ export function Sidebar() {
               {email ?? shortAddr ?? 'Account'}
             </p>
             {authenticated && (
-              <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Arbitrum Sepolia</p>
+              <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Solana devnet</p>
             )}
           </div>
         </Link>
@@ -181,16 +181,16 @@ export function SortsLogoMark() {
   return (
     <div style={{
       width: 28, height: 28,
-      background: 'linear-gradient(135deg, #0e1016 0%, #141828 100%)',
-      border: '1px solid rgba(91,142,245,0.2)',
+      background: 'linear-gradient(135deg, var(--bg-base) 0%, var(--bg-elevated) 100%)',
+      border: '1px solid var(--border-cyan)',
       borderRadius: 8,
-      boxShadow: '0 4px 20px rgba(91,142,245,0.15)',
+      boxShadow: '0 4px 20px var(--cyan-dim)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     }}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <rect x="1.8" y="2.1" width="11.4" height="3.5" rx="1.75" fill="#5b8ef5" />
-        <rect x="3.5" y="6.25" width="9.1" height="3.5" rx="1.75" fill="#5b8ef5" opacity="0.72" />
-        <rect x="1.8" y="10.4" width="11.4" height="3.5" rx="1.75" fill="#5b8ef5" />
+        <rect x="1.8" y="2.1" width="11.4" height="3.5" rx="1.75" fill="var(--cyan)" />
+        <rect x="3.5" y="6.25" width="9.1" height="3.5" rx="1.75" fill="var(--cyan)" opacity="0.72" />
+        <rect x="1.8" y="10.4" width="11.4" height="3.5" rx="1.75" fill="var(--cyan)" />
       </svg>
     </div>
   );

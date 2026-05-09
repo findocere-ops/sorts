@@ -1,21 +1,55 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import { ContentService, CreatePostSchema, UpdatePostSchema, type ContentRow } from '../../services/content/ContentService';
 import { ChainServiceFactory } from '../../services/chain/ChainServiceFactory';
 import { DataProtectorContentService } from '../../services/content/DataProtectorContentService';
 import { contentReadMessage, creatorActionMessage, verifyContentReadProof, verifyCreatorProof } from '../walletProof';
+import { privyAuth, requireWalletOwner } from '../middleware/auth';
+import { sigNonce } from '../middleware/sig-nonce';
+import { previewQuota } from '../middleware/preview-quota';
+import { PreviewQuotaService } from '../../services/community/preview-quota';
+import type { PrivyService } from '../../services/wallet/PrivyService';
 
 const dataProtector = new DataProtectorContentService();
 
-export function contentRouter(db: Database): Router {
+interface RouterDeps {
+  privyService: PrivyService | null;
+}
+
+export function contentRouter(db: Database, deps: RouterDeps = { privyService: null }): Router {
   const router: Router = Router();
   const chain = ChainServiceFactory.forChain();
   const svc = new ContentService(db, chain, dataProtector);
 
+  const auth = deps.privyService ? privyAuth(deps.privyService) : passThrough;
+  const ownsCreatorWallet = deps.privyService ? requireWalletOwner('creatorWallet') : passThrough;
+  const replayGuard = sigNonce(db);
+  const previewQuotaSvc = new PreviewQuotaService(db);
+  const previewQuotaGate = previewQuota(previewQuotaSvc);
+
+  // Resolve the per-community chain service. For Solana communities the
+  // access check goes through SolanaService.checkAccess (Day 2), which keeps
+  // privacy invariants — never returns a tier or member count.
+  function chainForCommunity(communityId: string) {
+    const chainId = svc.getCommunityChain(communityId) ?? 'arbitrum-sepolia';
+    return ChainServiceFactory.forChain(chainId);
+  }
+  async function verifyTierAccessForCommunity(
+    communityId: string,
+    contractAddress: string,
+    wallet: string,
+    tierRequired: 1 | 2 | 3,
+  ): Promise<boolean> {
+    const adapter = chainForCommunity(communityId);
+    return adapter.checkAccess(contractAddress, wallet, tierRequired);
+  }
+
   // GET /api/content/:communityId
   // Public callers receive metadata only. Members can include wallet+signature
-  // to receive plaintext bodies for posts their tier can access.
-  router.get('/:communityId', async (req: Request, res: Response) => {
+  // to receive plaintext bodies for posts their tier can access. Non-members
+  // get only `preview_eligible` posts unlocked; the preview-quota middleware
+  // caps the unique-community footprint at PREVIEW_QUOTA_LIMIT per 7 days.
+  router.get('/:communityId', previewQuotaGate, async (req: Request, res: Response) => {
     try {
       const communityId = req.params.communityId;
       const wallet = typeof req.query.wallet === 'string' ? req.query.wallet : null;
@@ -35,7 +69,23 @@ export function contentRouter(db: Database): Router {
 
       const posts = svc.listPublishedMetadata(communityId);
       if (!wallet) {
-        return res.json({ success: true, data: posts.map(p => lockPost(p)) });
+        // Day-10 A5 — anonymous callers (no wallet) get the SAME post-body
+        // policy as non-member authenticated callers further below: only
+        // posts the creator marked `preview_eligible = true` come back
+        // with `locked: false`; every other post stays locked.
+        //
+        // Privacy invariant 9 still holds: only `preview_eligible` posts
+        // unlock; everything else stays locked. The change is in WHO can
+        // hit the unlocked path, not WHAT unlocks. The previewQuotaGate
+        // middleware still caps the unique-community footprint via the
+        // X-Session-Token header (set client-side). See:
+        //   docs/PRIVACY_REVIEW.md (PG-016 entry)
+        //   docs/UX_RESEARCH_FINDINGS.md §A5 (rationale + risk callout)
+        const anonPreview = posts.map((post) => {
+          if (post.preview_eligible) return unlockMetadata(post);
+          return lockPost(post);
+        });
+        return res.json({ success: true, data: anonPreview });
       }
 
       const proofOk = await verifyContentReadProof(req, communityId, wallet);
@@ -52,12 +102,37 @@ export function contentRouter(db: Database): Router {
         return res.status(404).json({ success: false, error: 'Community not found' });
       }
 
-      const readable = await Promise.all(posts.map(async (post) => {
-        const hasAccess = await svc.verifyTierAccess(contractAddress, wallet, post.tier_required as 1 | 2 | 3);
-        return hasAccess ? unlockMetadata(post) : lockPost(post);
-      }));
+      // Single up-front access check. Solana communities never return tier;
+      // EVM honours requiredTier per post.
+      const hasMembership = await verifyTierAccessForCommunity(
+        communityId,
+        contractAddress,
+        wallet,
+        1,
+      );
+      if (hasMembership) {
+        // Active member: free quota slot for this community + return full
+        // metadata with body unlocked per post on subsequent /:postId reads.
+        previewQuotaSvc.release({ wallet }, communityId);
+        const readable = await Promise.all(posts.map(async (post) => {
+          const ok = await verifyTierAccessForCommunity(
+            communityId,
+            contractAddress,
+            wallet,
+            post.tier_required as 1 | 2 | 3,
+          );
+          return ok ? unlockMetadata(post) : lockPost(post);
+        }));
+        return res.json({ success: true, data: readable });
+      }
 
-      res.json({ success: true, data: readable });
+      // Non-member: only preview_eligible posts get the unlock signal; every
+      // other post stays locked. Quota slot was reserved by the middleware.
+      const previewOnly = posts.map((post) => {
+        if (post.preview_eligible) return unlockMetadata(post);
+        return lockPost(post);
+      });
+      res.json({ success: true, data: previewOnly });
     } catch {
       res.status(500).json({ success: false, error: 'Failed to fetch content' });
     }
@@ -105,7 +180,7 @@ export function contentRouter(db: Database): Router {
         return res.status(404).json({ success: false, error: 'Community not found' });
       }
 
-      const hasAccess = await svc.verifyTierAccess(contractAddress, wallet, post.tier_required as 1 | 2 | 3);
+      const hasAccess = await verifyTierAccessForCommunity(communityId, contractAddress, wallet, post.tier_required as 1 | 2 | 3);
       if (!hasAccess) {
         return res.status(403).json({ success: false, error: 'Membership or tier insufficient', data: lockPost(post) });
       }
@@ -137,7 +212,7 @@ export function contentRouter(db: Database): Router {
   });
 
   // POST /api/content/:communityId
-  router.post('/:communityId', async (req: Request, res: Response) => {
+  router.post('/:communityId', auth, ownsCreatorWallet, replayGuard, async (req: Request, res: Response) => {
     const parsed = CreatePostSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -166,7 +241,7 @@ export function contentRouter(db: Database): Router {
   });
 
   // PATCH /api/content/:communityId/:postId
-  router.patch('/:communityId/:postId', async (req: Request, res: Response) => {
+  router.patch('/:communityId/:postId', auth, ownsCreatorWallet, replayGuard, async (req: Request, res: Response) => {
     const parsed = UpdatePostSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -193,7 +268,7 @@ export function contentRouter(db: Database): Router {
   });
 
   // DELETE /api/content/:communityId/:postId
-  router.delete('/:communityId/:postId', async (req: Request, res: Response) => {
+  router.delete('/:communityId/:postId', auth, ownsCreatorWallet, replayGuard, async (req: Request, res: Response) => {
     const { creatorWallet } = req.body;
     if (!creatorWallet) return res.status(400).json({ success: false, error: 'creatorWallet required' });
     const proofOk = await verifyCreatorProof(req, req.params.communityId, creatorWallet);
@@ -214,6 +289,10 @@ export function contentRouter(db: Database): Router {
   });
 
   return router;
+}
+
+function passThrough(_req: Request, _res: Response, next: NextFunction): void {
+  next();
 }
 
 function lockPost(post: Omit<ContentRow, 'body'> | ContentRow) {
@@ -243,6 +322,7 @@ function serializePost(post: Omit<ContentRow, 'body'> | ContentRow, opts: { incl
     tier_required: post.tier_required,
     pinned: post.pinned,
     published: post.published,
+    preview_eligible: Boolean(post.preview_eligible),
     likes_count: post.likes_count,
     comments_count: post.comments_count,
     created_at: post.created_at,

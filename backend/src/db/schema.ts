@@ -4,7 +4,24 @@ import fs from 'fs';
 
 const DB_PATH = process.env.DATABASE_PATH ?? './data/sorts.db';
 
+/** Picks the active driver. Returns `'postgres'` when `DATABASE_URL` is set,
+ *  otherwise `'sqlite'`. Documented in `docs/INFRASTRUCTURE.md` as the
+ *  rollback handle: clear `DATABASE_URL` to fall back to SQLite + Render
+ *  Persistent Disk. */
+export function selectDriver(): 'sqlite' | 'postgres' {
+  return process.env.DATABASE_URL ? 'postgres' : 'sqlite';
+}
+
 export function openDb(): Database.Database {
+  if (selectDriver() === 'postgres') {
+    // The Postgres adapter mirrors the better-sqlite3 surface
+    // (`prepare(...).all/get/run` + `exec` + `pragma` no-op + `close`).
+    // We cast through `unknown` because better-sqlite3's full Database
+    // type carries surface our app does not consume.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { openPostgres } = require('./postgres') as typeof import('./postgres');
+    return openPostgres() as unknown as Database.Database;
+  }
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
@@ -114,6 +131,33 @@ export function runMigrations(db: Database.Database): void {
       content_count     INTEGER NOT NULL DEFAULT 0,
       cached_at         TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Signature replay protection. Each (nonce, wallet) is single-use within
+    -- the TTL window (5 min by default). Cleanup happens lazily via the
+    -- middleware on every request, so this table stays small.
+    CREATE TABLE IF NOT EXISTS nonces (
+      nonce       TEXT NOT NULL,
+      wallet      TEXT NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      PRIMARY KEY (nonce, wallet)
+    );
+    CREATE INDEX IF NOT EXISTS idx_nonces_expires_at ON nonces(expires_at);
+
+    -- Day-5 preview-quota. Either wallet OR session_token identifies the
+    -- caller; entries older than 7 days are GC'd by the quota service on
+    -- every check, so this table stays small. Privacy: NEVER joined with
+    -- membership_cache or wallet_links in any API response.
+    CREATE TABLE IF NOT EXISTS preview_quota (
+      id            TEXT PRIMARY KEY,
+      wallet        TEXT,
+      session_token TEXT,
+      community_id  TEXT NOT NULL,
+      created_at    INTEGER NOT NULL,
+      UNIQUE(wallet, session_token, community_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_preview_quota_created ON preview_quota(created_at);
+    CREATE INDEX IF NOT EXISTS idx_preview_quota_wallet ON preview_quota(wallet);
+    CREATE INDEX IF NOT EXISTS idx_preview_quota_session ON preview_quota(session_token);
   `);
 
   // Run additive migrations for columns added after initial release
@@ -143,5 +187,10 @@ export function runMigrations(db: Database.Database): void {
   }
   if (!contentInfo.find(c => c.name === 'protection_status')) {
     db.exec("ALTER TABLE content ADD COLUMN protection_status TEXT NOT NULL DEFAULT 'plain'");
+  }
+  // Day-5 — per-post preview marker. Creator toggles this per content row;
+  // the public GET respects it for non-members.
+  if (!contentInfo.find(c => c.name === 'preview_eligible')) {
+    db.exec("ALTER TABLE content ADD COLUMN preview_eligible INTEGER NOT NULL DEFAULT 0");
   }
 }

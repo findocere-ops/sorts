@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import type { IChainService } from '@sorts/shared';
+import { ChainServiceFactory } from './chain/ChainServiceFactory';
 import { formatUnits } from 'viem';
 
 export interface CommunityStats {
@@ -35,7 +36,20 @@ export class AnalyticsService {
     private chain: IChainService,
   ) {}
 
+  /** Returns chain-aware aggregate stats. The per-community chain id is read
+   *  from the `communities.chain_id` column (Day 5) so Solana communities go
+   *  through SolanaService.getAggregateStats. The aggregate-only contract
+   *  (no per-member fields) holds across both adapters. */
   async getCommunityStats(communityId: string, contractAddress: string): Promise<CommunityStats> {
+    const chainRow = this.db.prepare(
+      'SELECT chain_id FROM communities WHERE id = ?'
+    ).get(communityId) as { chain_id: string } | undefined;
+    const chainId = chainRow?.chain_id ?? 'arbitrum-sepolia';
+    const adapter: IChainService =
+      this.chain && (chainId === 'arbitrum-sepolia')
+        ? this.chain
+        : ChainServiceFactory.forChain(chainId);
+    const isSolana = chainId === 'solana-devnet' || chainId === 'solana-mainnet';
     // Try cache first (5 min TTL)
     const cached = this.db.prepare(
       "SELECT * FROM analytics_cache WHERE community_id = ? AND cached_at > datetime('now', '-5 minutes')"
@@ -58,7 +72,9 @@ export class AnalyticsService {
         expiredMemberships: totalMembers - activeMembers,
         activeRatio: totalMembers > 0 ? activeMembers / totalMembers : 0,
         totalRevenueWei: cached.total_revenue_wei,
-        totalRevenueDisplay: formatUsdc(cached.total_revenue_wei),
+        totalRevenueDisplay: isSolana
+          ? formatLamports(cached.total_revenue_wei)
+          : formatUsdc(cached.total_revenue_wei),
         contentCount,
         cachedAt: cached.cached_at,
       };
@@ -67,7 +83,7 @@ export class AnalyticsService {
     // Fetch from chain
     let chainStats = { totalMembers: 0, activeMemberships: 0, totalRevenueWei: '0', activeRatio: 0 };
     try {
-      chainStats = await this.chain.getAggregateStats(contractAddress);
+      chainStats = await adapter.getAggregateStats(contractAddress);
     } catch {
       // Chain unreachable — return zeros rather than fail
     }
@@ -91,7 +107,9 @@ export class AnalyticsService {
       expiredMemberships: chainStats.totalMembers - chainStats.activeMemberships,
       activeRatio: chainStats.activeRatio,
       totalRevenueWei: chainStats.totalRevenueWei,
-      totalRevenueDisplay: formatUsdc(chainStats.totalRevenueWei),
+      totalRevenueDisplay: isSolana
+        ? formatLamports(chainStats.totalRevenueWei)
+        : formatUsdc(chainStats.totalRevenueWei),
       contentCount,
       cachedAt: new Date().toISOString(),
     };
@@ -129,5 +147,14 @@ function formatUsdc(value: string): string {
     return `${formatUnits(BigInt(value), 6)} USDC`;
   } catch {
     return '0 USDC';
+  }
+}
+
+function formatLamports(value: string): string {
+  try {
+    const n = BigInt(value);
+    return `${formatUnits(n, 9)} SOL`;
+  } catch {
+    return '0 SOL';
   }
 }

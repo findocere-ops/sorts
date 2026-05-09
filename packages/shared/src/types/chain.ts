@@ -1,7 +1,13 @@
+export type EvmChainId = 'arbitrum-sepolia';
+export type SolanaChainId = 'solana-devnet' | 'solana-mainnet';
+
 export type ChainId =
-  | 'arbitrum-sepolia'   // Phase 1 — iExec Vibe Coding Challenge
-  | 'solana-devnet'      // Phase 2 — IKA + Encrypt + Umbra
-  | 'solana-mainnet';    // Phase 2 — production Solana
+  | EvmChainId    // Phase 1 — iExec Vibe Coding Challenge legacy
+  | SolanaChainId; // Phase 2 — Solana primary chain (devnet first)
+
+/** Discriminator used by ChainServiceFactory to route to the right adapter. */
+export const COMMUNITY_CHAIN_LEGACY: EvmChainId = 'arbitrum-sepolia';
+export const COMMUNITY_CHAIN_DEVNET: SolanaChainId = 'solana-devnet';
 
 export interface ChainConfig {
   id: ChainId;
@@ -38,3 +44,7 @@ export const CHAIN_CONFIGS: Record<ChainId, ChainConfig> = {
     isTestnet: false,
   },
 };
+
+export function isSolanaChain(id: ChainId | string): id is SolanaChainId {
+  return id === 'solana-devnet' || id === 'solana-mainnet';
+}

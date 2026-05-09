@@ -1,0 +1,77 @@
+#!/bin/sh
+# SORTS pre-commit hook (per docs/RISK_MANAGEMENT.md §"Concrete pre-commit hook")
+#
+# Activate (one-time per worktree clone):
+#   git config core.hooksPath .githooks
+#
+# This hook enforces the mechanical privacy + secret guards that AGENT_GUARDRAILS
+# treats as non-negotiable. It is a "layer 2" defense — the prompts (layer 1)
+# usually catch these, but agents sometimes drift.
+set -e
+
+STAGED=$(git diff --cached --name-only)
+[ -z "$STAGED" ] && exit 0
+
+# 1. Block likely-secret payloads in staged files. Require `KEY=<value>`
+# shape with a 16+ char value so docs / regex strings that mention the
+# variable names without carrying a real secret (this hook itself,
+# RISK_MANAGEMENT.md, .env.example) do not false-positive.
+# Also exempt .md files and .env.example by name.
+SECRET_HITS=$(echo "$STAGED" \
+  | grep -v -E '\.(md|example)$' \
+  | grep -v -E '(^|/)\.env\.example$' \
+  | xargs -I {} sh -c 'test -f "{}" && grep -lE "(PRIVY_APP_SECRET|TELEGRAM_BOT_TOKEN|HELIUS_API_KEY|PRIVATE_KEY)[[:space:]]*=[[:space:]]*[\"\x27]?[A-Za-z0-9_/+=-]{16,}" "{}" 2>/dev/null' 2>/dev/null \
+  || true)
+if [ -n "$SECRET_HITS" ]; then
+  echo "ERROR (pre-commit): possible secret in staged files:"
+  echo "$SECRET_HITS"
+  exit 1
+fi
+
+# 2. Block real .env files. Only .env.example is allowed.
+ENV_HITS=$(echo "$STAGED" | grep -E '(^|/)\.env(\..*)?$' | grep -v -E '(^|/)\.env\.example$' || true)
+if [ -n "$ENV_HITS" ]; then
+  echo "ERROR (pre-commit): only .env.example may be committed. Offenders:"
+  echo "$ENV_HITS"
+  exit 1
+fi
+
+# 3. Block keypair / treasury JSON files.
+KEY_HITS=$(echo "$STAGED" | grep -E '(programs/sorts-community/keys/|protocol-treasury\.json|.*-keypair\.json)' || true)
+if [ -n "$KEY_HITS" ]; then
+  echo "ERROR (pre-commit): keypair / treasury files must never be committed. Offenders:"
+  echo "$KEY_HITS"
+  exit 1
+fi
+
+# 4. Block plaintext `level` field on Subscription account.
+if echo "$STAGED" | grep -q 'programs/sorts-community/src/state.rs'; then
+  if git diff --cached programs/sorts-community/src/state.rs | grep -E '^\+\s*pub\s+(level|tier_level)\s*:\s*u8' >/dev/null; then
+    echo "ERROR (pre-commit): plaintext level field on Subscription is forbidden (privacy invariant 2)"
+    exit 1
+  fi
+fi
+
+# 5. Run the privacy-related test suites if backend code changed.
+if echo "$STAGED" | grep -qE '^backend/src/(api|services|bot)/'; then
+  if [ -x backend/node_modules/.bin/jest ]; then
+    echo "[pre-commit] running privacy + invariant test suites…"
+    (cd backend && node_modules/.bin/jest --runInBand \
+      __tests__/privacy-assertions.test.ts \
+      __tests__/analytics-no-leak.test.ts \
+      __tests__/umbra-no-seed-leak.test.ts \
+      __tests__/ika-no-real-funds.test.ts \
+      __tests__/preview-quota.test.ts \
+      __tests__/sig-replay.test.ts \
+      __tests__/privy-auth.test.ts \
+      ) || {
+        echo "ERROR (pre-commit): privacy-related test suite went red. Fix before committing."
+        exit 1
+      }
+  else
+    echo "[pre-commit] WARN: backend/node_modules/.bin/jest missing — skipping test gate. Run \`pnpm install\` to enable."
+  fi
+fi
+
+echo "[pre-commit] privacy + secret gates clean."
+exit 0
